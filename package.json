@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/douglasdasilvasousa/Squilo.git"
+  },
+  "author": {
+    "name": "Douglas da Silva Sousa",
+    "email": "douglass.sousa@outlook.com.br"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./auth": "./src/pipes/auth/strategies/index.ts"
@@ -27,5 +35,6 @@
     "mssql": "^11.0.1",
     "open": "^10.2.0",
     "xlsx": "^0.18.5"
-  }
+  },
+  "license": "MIT"
 }
