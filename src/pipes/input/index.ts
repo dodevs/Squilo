@@ -1,7 +1,7 @@
 import type { Transaction } from "mssql";
 import { Execute } from "../execute";
 import type { DatabaseConnection } from "../connect";
-import { Retrieve, RetrieveChain } from "../retrieve";
+import { Retrieve, type RetrieveChain } from "../retrieve";
 
 export type InputChain<TParam> = {
     Execute(fn: (transaction: Transaction, database: string, params: TParam) => Promise<void>): Promise<void>;

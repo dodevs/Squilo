@@ -1,4 +1,4 @@
-import type { config } from 'mssql'
+import type { config } from 'mssql';
 import type { ServerConfig } from "../server/types";
 import type { ConnectionOptions } from "../connect";
 import { Pool } from "../../pool";

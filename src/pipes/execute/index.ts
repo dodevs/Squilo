@@ -1,4 +1,4 @@
-import mssql from 'mssql';
+import type { Transaction } from 'mssql';
 import type { DatabaseConnection } from "../connect";
 
 export const Execute = <TParam>(
@@ -6,7 +6,7 @@ export const Execute = <TParam>(
     input: TParam
 ) => {
     return async (
-        fn: (transaction: mssql.Transaction, database: string, params: TParam) => Promise<void>
+        fn: (transaction: Transaction, database: string, params: TParam) => Promise<void>
     ): Promise<void> => {
         const executeFn = async (dc: DatabaseConnection): Promise<void> => {
             const opened = await dc.connection;

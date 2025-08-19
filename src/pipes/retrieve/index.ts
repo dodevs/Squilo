@@ -1,4 +1,4 @@
-import mssql from "mssql";
+import type { Transaction } from "mssql";
 import { type OutputStrategy, Output } from "../output";
 import type { DatabaseConnection } from "../connect";
 
@@ -7,7 +7,7 @@ export type RetrieveChain<TReturn> = {
 }
 
 export const Retrieve = <TParam>(connections$: AsyncGenerator<DatabaseConnection[]>, input: TParam) => {
-    return <TReturn>(fn: (transaction: mssql.Transaction, database: string, params: TParam) => Promise<TReturn>): RetrieveChain<TReturn> => {
+    return <TReturn>(fn: (transaction: Transaction, database: string, params: TParam) => Promise<TReturn>): RetrieveChain<TReturn> => {
         const { readable, writable } = new TransformStream<Record<string, TReturn>, Record<string, TReturn>>();
         const writer = writable.getWriter();
 

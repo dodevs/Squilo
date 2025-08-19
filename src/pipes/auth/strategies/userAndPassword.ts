@@ -1,5 +1,5 @@
-import { AuthStrategy } from ".."
-import { ServerConfig } from "../../server/types"
+import type { AuthStrategy } from ".."
+import type { ServerConfig } from "../../server/types"
 
 export const UserAndPassword = (username: string, password: string): AuthStrategy => (config: ServerConfig) => {
     return {

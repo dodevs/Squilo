@@ -8,7 +8,7 @@ export function Pool(poolConfig: config): Pool {
     const POOL: Record<string, Promise<ConnectionPool>> = {};
 
     return {
-        connect: function (partialConfig: Partial<config>) {
+        connect: (partialConfig: Partial<config>) => {
             const config = { ...poolConfig, ...partialConfig };
             const database = config.database;
     
