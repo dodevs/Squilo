@@ -1,4 +1,3 @@
-import { readFile, writeFile } from "fs/promises";
 import {
     type AuthenticationResult,
     type Configuration,
@@ -12,8 +11,8 @@ import {
 } from "@azure/msal-node";
 
 import * as path from "path";
-import { ServerConfig } from "../../server/types";
-import { AuthStrategy } from "..";
+import type { ServerConfig } from "../../server/types";
+import type { AuthStrategy } from "..";
 import { cwd } from "process";
 
 const SCOPES = ["https://database.windows.net//.default"];
@@ -23,10 +22,10 @@ const cacheAccess = (hash: string) => {
 
     const before = async (cacheContext: TokenCacheContext) => {
         try {
-            const cacheFile = await readFile(cacheFilePath, "utf-8");
+            const cacheFile = await Bun.file(cacheFilePath).text();
             cacheContext.tokenCache.deserialize(cacheFile);
         } catch (err) {
-            await writeFile(cacheFilePath, "");
+            await Bun.write(cacheFilePath, "");
             cacheContext.tokenCache.deserialize("");
         }
     };
@@ -34,7 +33,7 @@ const cacheAccess = (hash: string) => {
     const after = async (cacheContext: TokenCacheContext) => {
         if (cacheContext.cacheHasChanged) {
             try {
-                await writeFile(cacheFilePath, cacheContext.tokenCache.serialize());
+                await Bun.write(cacheFilePath, cacheContext.tokenCache.serialize());
             } catch (err) {
                 console.error(err);
             }
@@ -80,7 +79,7 @@ export const GetToken = async (config: NodeAuthOptions) => {
     const accounts = await getAccount();
     let result: AuthenticationResult | null;
 
-    if (accounts.length > 0) {
+    if (accounts.length > 0 && accounts[0]) {
         result = await pca.acquireTokenSilent({
             scopes: SCOPES,
             account: accounts[0],

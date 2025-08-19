@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, unlinkSync } from "fs";
 import { XlsOutputStrategy } from "./index";
 
 describe("XlsOutputStrategy", () => {
@@ -18,10 +17,10 @@ describe("XlsOutputStrategy", () => {
     const strategy = XlsOutputStrategy(false, testFile);
     await strategy(mockData);
     
-    expect(existsSync(testFile)).toBe(true);
+    expect(await Bun.file(testFile).exists()).toBe(true);
     
     // Clean up
-    unlinkSync(testFile);
+    await Bun.file(testFile).delete();
   });
 
   test("should generate XLS file with combined sheet when unique=true", async () => {
@@ -39,10 +38,10 @@ describe("XlsOutputStrategy", () => {
     const strategy = XlsOutputStrategy(true, testFile);
     await strategy(mockData);
     
-    expect(existsSync(testFile)).toBe(true);
+    expect(await Bun.file(testFile).exists()).toBe(true);
     
     // Clean up
-    unlinkSync(testFile);
+    await Bun.file(testFile).delete();
   });
 
   test("should create empty sheet when no data provided", async () => {
@@ -57,9 +56,9 @@ describe("XlsOutputStrategy", () => {
     const strategy = XlsOutputStrategy(false, testFile);
     await strategy(mockData);
     
-    expect(existsSync(testFile)).toBe(true);
+    expect(await Bun.file(testFile).exists()).toBe(true);
     
     // Clean up
-    unlinkSync(testFile);
+    await Bun.file(testFile).delete();
   });
 });
