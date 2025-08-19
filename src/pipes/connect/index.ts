@@ -11,7 +11,7 @@ export type TemplateParam = {
 
 export type ConnectOverloads = {
     (database: string): ConnectionChain;
-    (databases: string[]): ConnectionChain;
+    (databases: string[], concurrent?: number): ConnectionChain;
     (options: ConnectionOptions, concurrent?: number): ConnectionChain;
 }
 
@@ -53,12 +53,10 @@ export const Connect = (pool: Pool): ConnectOverloads => (param: string | string
 
     if (typeof param === 'string') {
         databases$ = Promise.resolve([param]);
-        connections$ = connections(databases$);
     }
 
     else if (Array.isArray(param)) {
         databases$ = Promise.resolve(param);
-        connections$ = connections(databases$, concurrent);
     }
 
     else if (typeof param === 'object' && 'query' in param) {
@@ -78,7 +76,7 @@ export const Connect = (pool: Pool): ConnectOverloads => (param: string | string
         throw new Error("Invalid parameter");
     }
 
-    connections$ = connections(databases$);
+    connections$ = connections(databases$, concurrent);
 
     return {
         Input: Input(connections$),
