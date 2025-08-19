@@ -4,11 +4,6 @@ import { type InputChain, Input } from "../input";
 import { Execute } from "../execute";
 import { type RetrieveChain, Retrieve } from "../retrieve";
 
-export type TemplateParam = {
-    string: TemplateStringsArray,
-    values: any[]
-}
-
 export type ConnectOverloads = {
     (database: string): ConnectionChain;
     (databases: string[], concurrent?: number): ConnectionChain;
@@ -17,7 +12,7 @@ export type ConnectOverloads = {
 
 export type ConnectionOptions = {
     database: string;
-    query: TemplateParam;
+    query: `SELECT${string}FROM${string}`;
 }
 
 export type DatabaseConnection = {
@@ -31,7 +26,7 @@ export type ConnectionChain = {
     Input<TParam>(fn: () => TParam): InputChain<TParam>;
 }
 
-export const Connect = (pool: Pool): ConnectOverloads => (param: string | string[] | ConnectionOptions, concurrent?: number): ConnectionChain => {
+export const Connect = (pool: Pool): ConnectOverloads => (param: string | string[] | ConnectionOptions, concurrent?: number): ConnectionChain => {    
     let connections$: AsyncGenerator<DatabaseConnection[]>;
     let databases$: Promise<string[]>;
 
@@ -61,15 +56,12 @@ export const Connect = (pool: Pool): ConnectOverloads => (param: string | string
 
     else if (typeof param === 'object' && 'query' in param) {
         databases$ = pool
-            .connect({ database: param.database })
+            .connect({ database: param.database, arrayRowMode: true })
             .then(conn => conn
                 .request()
-                .query<{ Database: string }>(
-                    param.query.string,
-                    param.query.values
-                )
+                .query<string[]>(param.query)
             )
-            .then(result => result.recordset.map(row => row.Database))
+            .then(result => result.recordset.flat())
     }
 
     else {
