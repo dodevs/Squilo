@@ -1,5 +1,5 @@
 import { type AuthStrategy, type AuthenticationChain, Auth } from "../auth";
-import { ServerConfig } from "./types";
+import type { ServerConfig } from "./types";
 
 type ServerChain = {
     Auth(strategy: AuthStrategy): AuthenticationChain;
