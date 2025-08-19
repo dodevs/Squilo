@@ -21,6 +21,7 @@
     "test:debug": "bun test --inspect"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.2.0",
     "@faker-js/faker": "^9.9.0",
     "@types/bun": "latest",
     "@types/xlsx": "^0.0.36",
