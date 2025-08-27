@@ -1,17 +1,7 @@
-import type { config } from 'mssql';
 import type { ServerConfig } from "../server/types";
-import type { ConnectionOptions } from "../connect";
 import { Pool } from "../../pool";
-import { type ConnectionChain, Connect } from "../connect";
-
-export type AuthStrategy = (config: ServerConfig) => config;
-
-export type AuthenticationChain = {
-    Connect(database: string): ConnectionChain;
-    Connect(databases: string[], concurrent?: number): ConnectionChain;
-    Connect(options: ConnectionOptions, concurrent?: number): ConnectionChain;
-    Close(): Promise<void>;
-}
+import { Connect } from "../connect";
+import type { AuthStrategy, AuthenticationChain } from "./types";
 
 export const Auth = (config: ServerConfig) => (strategy: AuthStrategy): AuthenticationChain => {
     const configWithAuth = strategy(config);

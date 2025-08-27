@@ -1,9 +1,5 @@
-import { type AuthStrategy, type AuthenticationChain, Auth } from "../auth";
-import type { ServerConfig } from "./types";
-
-type ServerChain = {
-    Auth(strategy: AuthStrategy): AuthenticationChain;
-}
+import { Auth } from "../auth";
+import type { ServerChain, ServerConfig } from "./types";
 
 export const Server = (config: ServerConfig): ServerChain => ({
     Auth: Auth(config),

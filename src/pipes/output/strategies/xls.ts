@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { OutputStrategy } from '../index';
+import type { OutputStrategy } from '../types';
 
 async function processSeparateSheets<TData>(
   result: ReadableStream<Record<string, TData>>,
@@ -9,7 +9,7 @@ async function processSeparateSheets<TData>(
   
   for await (const dbResult of result) {
     for (const [database, data] of Object.entries(dbResult)) {
-      let sheetData: any[] = [];
+      let sheetData: unknown[] = [];
       if (Array.isArray(data)) {
         sheetData = data;
       } else if (data && typeof data === 'object') {
@@ -33,17 +33,17 @@ async function processCombinedSheet<TData>(
   result: ReadableStream<Record<string, TData>>,
   workbook: XLSX.WorkBook
 ): Promise<boolean> {
-  let allData: any[] = [];
+  const allData: unknown[] = [];
   
   for await (const dbResult of result) {
     for (const [database, data] of Object.entries(dbResult)) {
-      let sheetData: any[] = [];
+      let sheetData: unknown[] = [];
       if (Array.isArray(data)) {
-        sheetData = data.map(item => ({ ...item, database }));
+        sheetData = data.map(item => ({ database, ...item }));
       } else if (data && typeof data === 'object') {
-        sheetData = [{ ...data, database }];
+        sheetData = [{ database, ...data }];
       } else {
-        sheetData = [{ value: data, database }];
+        sheetData = [{ database, value: data }];
       }
       allData.push(...sheetData);
     }
@@ -58,7 +58,7 @@ async function processCombinedSheet<TData>(
   return true;
 }
 
-export const XlsOutputStrategy = <TData>(unique: boolean = false, filename: string): OutputStrategy<TData, void> => async (result) => {
+export const XlsOutputStrategy = <TData>(unique: boolean = false, filename: string): OutputStrategy<TData, string> => async (result) => {
   const workbook = XLSX.utils.book_new();
   
   if (unique) {
@@ -75,5 +75,17 @@ export const XlsOutputStrategy = <TData>(unique: boolean = false, filename: stri
     }
   }
   
-  XLSX.writeFile(workbook, filename);
+  filename = filename.replace(/\.(xlsx|xls)$/, '');
+  filename = filename.replace(/\s+/g, '_');
+  filename = filename.replace(/[^\w\s-]/g, '');
+
+  filename = `${filename}-${new Date().toISOString()}.xlsx`;
+
+  try {
+    XLSX.writeFile(workbook, filename);
+  } catch (error) {
+    console.error('Error writing Excel file:', error);
+  }
+
+  return filename;
 };

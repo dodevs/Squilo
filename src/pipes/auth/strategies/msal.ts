@@ -12,7 +12,7 @@ import {
 
 import * as path from "path";
 import type { ServerConfig } from "../../server/types";
-import type { AuthStrategy } from "..";
+import type { AuthStrategy } from "../types";
 import { cwd } from "process";
 
 const SCOPES = ["https://database.windows.net//.default"];

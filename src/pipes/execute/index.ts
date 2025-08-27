@@ -1,8 +1,9 @@
 import type { Transaction } from 'mssql';
-import type { DatabaseConnection } from "../connect";
+import type { DatabaseConnection } from "../connect/types";
 
 export const Execute = <TParam>(
-    connections$: AsyncGenerator<DatabaseConnection[]>, 
+    connections$: (databases: string[]) => Generator<DatabaseConnection[]>, 
+    databases$: Promise<string[]>,
     input: TParam
 ) => {
     return async (
@@ -21,7 +22,9 @@ export const Execute = <TParam>(
             }
         };
 
-        for await (const connectionBatch of connections$) {
+        const databases = await databases$;
+
+        for (const connectionBatch of connections$(databases)) {
             const executions = connectionBatch.map(executeFn);
             await Promise.allSettled(executions);
         }

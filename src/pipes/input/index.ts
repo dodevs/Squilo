@@ -1,19 +1,14 @@
-import type { Transaction } from "mssql";
 import { Execute } from "../execute";
-import type { DatabaseConnection } from "../connect";
-import { Retrieve, type RetrieveChain } from "../retrieve";
+import type { DatabaseConnection } from "../connect/types";
+import { Retrieve } from "../retrieve";
+import type { InputChain } from "./types";
 
-export type InputChain<TParam> = {
-    Execute(fn: (transaction: Transaction, database: string, params: TParam) => Promise<void>): Promise<void>;
-    Retrieve<TResult>(fn: (transaction: Transaction, database: string, params: TParam) => Promise<TResult>): RetrieveChain<TResult>;
-}
-
-export const Input = (connections: AsyncGenerator<DatabaseConnection[]>) => {
+export const Input = (connections$: (databases: string[]) => Generator<DatabaseConnection[]>, databases$: Promise<string[]>) => {
     return <TParam>(fn: () => TParam): InputChain<TParam> => {
         const params = fn();
         return {
-            Execute: Execute(connections, params),
-            Retrieve: Retrieve(connections, params)
+            Execute: Execute(connections$, databases$, params),
+            Retrieve: Retrieve(connections$, databases$, params)
         }
     }
 }

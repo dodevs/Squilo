@@ -15,12 +15,12 @@ describe("XlsOutputStrategy", () => {
 
     const testFile = "/tmp/test-separate.xlsx";
     const strategy = XlsOutputStrategy(false, testFile);
-    await strategy(mockData);
+    const filename = await strategy(mockData);
     
-    expect(await Bun.file(testFile).exists()).toBe(true);
+    expect(await Bun.file(filename).exists()).toBe(true);
     
     // Clean up
-    await Bun.file(testFile).delete();
+    await Bun.file(filename).delete();
   });
 
   test("should generate XLS file with combined sheet when unique=true", async () => {
@@ -36,12 +36,12 @@ describe("XlsOutputStrategy", () => {
 
     const testFile = "/tmp/test-combined.xlsx";
     const strategy = XlsOutputStrategy(true, testFile);
-    await strategy(mockData);
+    const filename = await strategy(mockData);
     
-    expect(await Bun.file(testFile).exists()).toBe(true);
+    expect(await Bun.file(filename).exists()).toBe(true);
     
     // Clean up
-    await Bun.file(testFile).delete();
+    await Bun.file(filename).delete();
   });
 
   test("should create empty sheet when no data provided", async () => {
@@ -54,11 +54,11 @@ describe("XlsOutputStrategy", () => {
 
     const testFile = "/tmp/test-empty.xlsx";
     const strategy = XlsOutputStrategy(false, testFile);
-    await strategy(mockData);
+    const filename = await strategy(mockData);
     
-    expect(await Bun.file(testFile).exists()).toBe(true);
+    expect(await Bun.file(filename).exists()).toBe(true);
     
     // Clean up
-    await Bun.file(testFile).delete();
+    await Bun.file(filename).delete();
   });
 });

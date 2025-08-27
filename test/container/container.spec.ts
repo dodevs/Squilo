@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, test } from 'bun:test'
-import { connect, ConnectionPool } from 'mssql'
+import { connect, type ConnectionPool } from 'mssql'
 import type { StartedTestContainer } from 'testcontainers'
 import { AzureSqlEdge, SQL_PASSWORD } from './container';
 

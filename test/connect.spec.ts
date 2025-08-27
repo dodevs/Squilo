@@ -3,10 +3,10 @@ import { AzureSqlEdge, SQL_PASSWORD } from './container/container'
 import { Server } from '../src';
 import { UserAndPassword } from '../src/pipes/auth/strategies';
 import { CLIENTS_MANAGER_DATABASE, DATABASES, SetupClientManager, SetupDatabases } from './container/setup/databases';
-import { type DatabaseConnection } from '../src/pipes/connect';
+import type { DatabaseConnection } from '../src/pipes/connect/types';
 import type { Transaction } from 'mssql';
 
-const mockExecute = mock(<TParam>(connections$: AsyncGenerator<DatabaseConnection[]>) => (fn: (transaction: Transaction, database: string, params: TParam) => Promise<void>) => Promise<void>);
+const mockExecute = mock(<TParam>(connections$: (databases: string[]) => Generator<DatabaseConnection[]>, databases$: Promise<string[]>) => (fn: (transaction: Transaction, database: string, params: TParam) => Promise<void>) => Promise<void>);
 mock.module('../src/pipes/execute', () => ({
     Execute: mockExecute,
 }))
@@ -36,8 +36,8 @@ describe('Connection overloads', async () => {
 
         expect(Connection).toBeDefined();
         expect(mockExecute).toHaveBeenCalledTimes(1);
-
-        const connectionsGenerator = mockExecute.mock.calls[0]![0];
+        const connectionsFn = mockExecute.mock.calls[0]![0];
+        const connectionsGenerator = connectionsFn([database]);
         const uniqueConnection = await connectionsGenerator.next();
 
         expect(uniqueConnection.done).toBe(false);
@@ -53,7 +53,8 @@ describe('Connection overloads', async () => {
         LocalServer.Connect(databases);
 
         expect(mockExecute).toHaveBeenCalledTimes(1);
-        const connectionsGenerator = mockExecute.mock.calls[0]![0];
+        const connectionsFn = mockExecute.mock.calls[0]![0];
+        const connectionsGenerator = connectionsFn(databases);
         const connections = await connectionsGenerator.next();
 
         expect(connections.done).toBe(false);
@@ -72,7 +73,8 @@ describe('Connection overloads', async () => {
         LocalServer.Connect(databases, 2);
 
         expect(mockExecute).toHaveBeenCalledTimes(1);
-        const connectionsGenerator = mockExecute.mock.calls[0]![0];
+        const connectionsFn = mockExecute.mock.calls[0]![0];
+        const connectionsGenerator = connectionsFn(databases);
         const firstConnections = await connectionsGenerator.next();
 
         expect(firstConnections.done).toBe(false);
@@ -107,7 +109,9 @@ describe('Connection overloads', async () => {
         });
 
         expect(mockExecute).toHaveBeenCalledTimes(1);
-        const connectionsGenerator = mockExecute.mock.calls[0]![0];
+        const connectionsFn = mockExecute.mock.calls[0]![0];
+        const databases$ = mockExecute.mock.calls[0]![1];
+        const connectionsGenerator = connectionsFn(await databases$);
         const connections = await connectionsGenerator.next();
         expect(connections.done).toBe(false);
         expect(connections.value).toHaveLength(5);
