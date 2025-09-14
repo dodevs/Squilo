@@ -2,7 +2,7 @@ import { Bit, connect, NVarChar, Table } from "mssql";
 import { CONFIG } from "../container";
 import type { StartedTestContainer } from "testcontainers";
 
-export const CLIENTS_MANAGER_DATABASE = 'ClientsManager';
+export const CLIENTS_MANAGER_DATABASE = 'ClientsManager' as const;
 
 export const DATABASES = [
     "TestDB1",
@@ -10,7 +10,7 @@ export const DATABASES = [
     "TestDB3",
     "TestDB4",
     "TestDB5",
-];
+] as const;
 
 export const SetupClientManager = async (container: StartedTestContainer) => {
     const masterConn = await connect({

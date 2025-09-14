@@ -1,15 +1,13 @@
 import type { OutputStrategy } from '../types';
 
-export const JsonOutputStrategy = <TData>(filename: string): OutputStrategy<TData, string> => async (result) => {
+export const JsonOutputStrategy = <TData>(): OutputStrategy<TData, string> => async (result) => {
   const data: Record<string, TData[]> = {};
   
   for await (const item of result) {
     Object.assign(data, item);
   }
 
-  filename = filename.replace(/\.json$/i, '');
-  filename = filename.replace(/\s+/g, '_');
-  filename = filename.replace(/[^\w\s-]/g, '');
+  let filename = process.argv[1]?.replace(/\.(?:js|ts)/, '')
   filename = `${filename}-${new Date().toISOString()}.json`;
 
   try {

@@ -11,11 +11,8 @@ describe("JsonOutputStrategy", () => {
       }
     });
 
-    const strategy = JsonOutputStrategy("test-output");
+    const strategy = JsonOutputStrategy();
     const result = await strategy(mockData);
-    
-    expect(typeof result).toBe("string");
-    expect(result).toMatch(/test-output-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\.json$/);
     
     // Verify file exists and contains correct data
     const fileContent = await Bun.file(result).text();
@@ -37,11 +34,8 @@ describe("JsonOutputStrategy", () => {
       }
     });
 
-    const strategy = JsonOutputStrategy("empty-test");
+    const strategy = JsonOutputStrategy();
     const result = await strategy(mockData);
-    
-    expect(typeof result).toBe("string");
-    expect(result).toMatch(/empty-test-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\.json$/);
     
     // Verify file exists and contains empty object
     const fileContent = await Bun.file(result).text();

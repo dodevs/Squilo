@@ -14,7 +14,7 @@ export const Retrieve = <TParam>(
         const writer = writable.getWriter();
 
         const singlerBar = new SingleBar({
-            format: `{database} {bar} {percentage}% | {value}/{total}`
+            format: `{bar} {percentage}% | {value}/{total} | {database}`
         }, Presets.shades_classic);
 
         const executeFn = async (dc: DatabaseConnection) => {
@@ -32,6 +32,7 @@ export const Retrieve = <TParam>(
                 }
             } catch (error) {
                 // TODO: Append client name and error in a structured json file
+                console.log(error);
                 transaction.rollback();
             }
         };
