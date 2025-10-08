@@ -80,12 +80,19 @@ export const GetToken = async (config: NodeAuthOptions) => {
     let result: AuthenticationResult | null;
 
     if (accounts.length > 0 && accounts[0]) {
-        result = await pca.acquireTokenSilent({
-            scopes: SCOPES,
-            account: accounts[0],
-        });
+        try {
+            result = await pca.acquireTokenSilent({
+                scopes: SCOPES,
+                account: accounts[0],
+            });
 
-        return result?.accessToken;
+            return result?.accessToken;
+        } catch (error) {
+            if (error instanceof Error) {
+                console.error('Silent token acquisition failed:', error.message);
+            }
+            console.log("Proceeding to interactive authentication");
+        }
     }
 
     const interactiveRequest: InteractiveRequest = {
