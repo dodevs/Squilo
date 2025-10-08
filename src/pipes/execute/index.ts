@@ -1,6 +1,12 @@
 import type { Transaction } from 'mssql';
 import type { DatabaseConnection } from "../connect/types";
 import { Presets, SingleBar } from 'cli-progress';
+import { AppendError, CleanErrors, type ErrorType } from '../../utils/append-error';
+import { LoadEnv } from '../../utils/load-env';
+
+const ENV = LoadEnv();
+let ERRORS_COUNT = 0;
+
 
 export const Execute = <TParam>(
     connections$: (databases: string[]) => Generator<DatabaseConnection[]>, 
@@ -27,9 +33,16 @@ export const Execute = <TParam>(
             } 
             catch (error) {
                 await transaction.rollback();
+                await AppendError(dc.database, error as ErrorType);
+
+                if (++ERRORS_COUNT > ENV.MAX_ERRORS) {
+                    console.error('Max errors reached, exiting...');
+                    process.exit(1);
+                }
             }
         };
 
+        await CleanErrors();
         const databases = await databases$;
 
         if (Bun.env.NODE_ENV !== 'test') {

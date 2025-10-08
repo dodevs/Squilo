@@ -5,7 +5,11 @@ import { Retrieve } from "../retrieve";
 
 import type { ConnectOverloads, ConnectionOptions, ConnectionChain, DatabaseConnection } from "./types";
 
-export const Connect = (pool: Pool): ConnectOverloads => (param: string | string[] | ConnectionOptions, concurrent?: number): ConnectionChain => {    
+export const Connect = (pool: Pool): ConnectOverloads => (param: string | string[] | ConnectionOptions, concurrent?: number): ConnectionChain => {
+    process.on("exit", async () => {
+        await pool.closeAll();
+    });
+
     let connections$: (databases: string[]) => Generator<DatabaseConnection[]>;
     let databases$: Promise<string[]>;
 
