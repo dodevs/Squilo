@@ -13,8 +13,7 @@ describe("XlsOutputStrategy", () => {
       }
     });
 
-    const testFile = "/tmp/test-separate.xlsx";
-    const strategy = XlsOutputStrategy(false, testFile);
+    const strategy = XlsOutputStrategy(false);
     const filename = await strategy(mockData);
     
     expect(await Bun.file(filename).exists()).toBe(true);
@@ -34,8 +33,7 @@ describe("XlsOutputStrategy", () => {
       }
     });
 
-    const testFile = "/tmp/test-combined.xlsx";
-    const strategy = XlsOutputStrategy(true, testFile);
+    const strategy = XlsOutputStrategy(true);
     const filename = await strategy(mockData);
     
     expect(await Bun.file(filename).exists()).toBe(true);
@@ -52,8 +50,7 @@ describe("XlsOutputStrategy", () => {
       }
     });
 
-    const testFile = "/tmp/test-empty.xlsx";
-    const strategy = XlsOutputStrategy(false, testFile);
+    const strategy = XlsOutputStrategy(false);
     const filename = await strategy(mockData);
     
     expect(await Bun.file(filename).exists()).toBe(true);

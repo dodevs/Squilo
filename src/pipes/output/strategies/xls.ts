@@ -58,7 +58,7 @@ async function processCombinedSheet<TData>(
   return true;
 }
 
-export const XlsOutputStrategy = <TData>(unique: boolean = false, filename: string): OutputStrategy<TData, string> => async (result) => {
+export const XlsOutputStrategy = <TData>(unique: boolean = false): OutputStrategy<TData, string> => async (result) => {
   const workbook = XLSX.utils.book_new();
   
   if (unique) {
@@ -74,11 +74,8 @@ export const XlsOutputStrategy = <TData>(unique: boolean = false, filename: stri
       XLSX.utils.book_append_sheet(workbook, emptyWorksheet, "Empty");
     }
   }
-  
-  filename = filename.replace(/\.(xlsx|xls)$/, '');
-  filename = filename.replace(/\s+/g, '_');
-  filename = filename.replace(/[^\w\s-]/g, '');
 
+  let filename = process.argv[1]?.replace(/\.(?:js|ts)/, '');
   filename = `${filename}-${new Date().toISOString()}.xlsx`;
 
   try {
