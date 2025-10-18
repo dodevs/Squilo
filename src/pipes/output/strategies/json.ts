@@ -8,7 +8,7 @@ export const JsonOutputStrategy = <TData>(): OutputStrategy<TData, string> => as
   }
 
   let filename = process.argv[1]?.replace(/\.(?:js|ts)/, '')
-  filename = `${filename}-${new Date().toISOString()}.json`;
+  filename = `${filename}-${Date.now()}.json`;
 
   try {
     await Bun.write(filename, JSON.stringify(data, null, 2));
