@@ -34,6 +34,8 @@ async function processCombinedSheet<TData>(
   workbook: XLSX.WorkBook
 ): Promise<boolean> {
   const allData: unknown[] = [];
+  const databaseGroups: { [database: string]: { startRow: number, endRow: number } } = {};
+  let currentRow = 1; // Start from row 1 (header is row 0)
   
   for await (const dbResult of result) {
     for (const [database, data] of Object.entries(dbResult)) {
@@ -45,6 +47,14 @@ async function processCombinedSheet<TData>(
       } else {
         sheetData = [{ database, value: data }];
       }
+      
+      // Track the start row for this database group
+      databaseGroups[database] ??= { startRow: currentRow, endRow: currentRow };
+      
+      // Update the end row for this database group
+      databaseGroups[database].endRow = currentRow + sheetData.length - 1;
+      currentRow += sheetData.length;
+      
       allData.push(...sheetData);
     }
   }
@@ -54,6 +64,18 @@ async function processCombinedSheet<TData>(
   }
   
   const worksheet = XLSX.utils.json_to_sheet(allData);
+  
+  worksheet['!rows'] ??= [];
+  
+  // Set row grouping for each database
+  for (const [_, { startRow, endRow }] of Object.entries(databaseGroups)) {
+    // Set level 1 for all rows in this database group
+    for (let i = startRow; i <= endRow; i++) {
+      worksheet['!rows'][i] ??= {hpx: 20};
+      worksheet['!rows'][i]!.level = i === endRow ? 0 : 1;
+    }
+  }
+  
   XLSX.utils.book_append_sheet(workbook, worksheet, "Combined");
   return true;
 }
@@ -76,13 +98,14 @@ export const XlsOutputStrategy = <TData>(unique: boolean = false): OutputStrateg
   }
 
   let filename = process.argv[1]?.replace(/\.(?:js|ts)/, '');
-  filename = `${filename}-${new Date().toISOString()}.xlsx`;
+  filename = `${filename}-${Date.now()}.xlsx`;
 
   try {
-    XLSX.writeFile(workbook, filename);
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
+    await Bun.write(filename, buffer);
+    return filename;
   } catch (error) {
-    console.error('Error writing Excel file:', error);
+    console.error('Error writing Excel file');
+    throw error;
   }
-
-  return filename;
 };
