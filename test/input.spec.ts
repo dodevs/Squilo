@@ -26,11 +26,12 @@ describe('Squilo input test', async () => {
         await localServer.Close();
     })
 
-    test('Should add a user using console input', async () => {
+    test('Should add a user using input', async () => {
         let name: string | null = "joe";
         let email: string | null = "joe.doe@example.com";
 
-        await localServer
+        // Execute the insert operation and store the promise
+        const executePromise = localServer
             .Connect(DATABASES)
             .Input<Omit<User, "Id">>(() => {
                 return {
@@ -44,21 +45,24 @@ describe('Squilo input test', async () => {
                     VALUES (${user.Name}, ${user.Email})
                 `;
             });
-
-            const users = await localServer
-                .Connect(DATABASES)
-                .Retrieve(async (transaction) => {
-                    const result = await transaction.request().query<User>`
-                        SELECT * FROM Users
-                    `;
-
-                    return result.recordset;
-                })
-                .Output(MergeOutputStrategy());
-
-            expect(users).toHaveLength(5);
             
-            const everyUserIsJoe = users.every(user => user.Name === name && user.Email === email);
-            expect(everyUserIsJoe).toBe(true);
+        // Wait for the execute operation to complete before retrieving
+        await executePromise;
+
+        const users = await localServer
+            .Connect(DATABASES)
+            .Retrieve(async (transaction) => {
+                const result = await transaction.request().query<User>`
+                    SELECT * FROM Users
+                `;
+
+                return result.recordset;
+            })
+            .Output(MergeOutputStrategy());
+
+        expect(users).toHaveLength(5);
+        
+        const everyUserIsJoe = users.every(user => user.Name === name && user.Email === email);
+        expect(everyUserIsJoe).toBe(true);
     })
 })

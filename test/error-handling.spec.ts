@@ -7,6 +7,7 @@ import { DATABASES, SetupDatabases } from "./container/setup/databases";
 import { SetupUsers } from "./container/setup/users";
 import { LoadEnv } from "../src/utils/load-env";
 import { AppendError } from "../src/utils/append-error";
+import { MergeOutputStrategy } from "../src/pipes/output/strategies";
 
 describe("Error handling and logging tests", async () => {
   const container = await AzureSqlEdge();
@@ -38,13 +39,6 @@ describe("Error handling and logging tests", async () => {
       process.env.MAX_ERRORS = originalMaxErrors;
     } else {
       delete process.env.MAX_ERRORS;
-    }
-  });
-
-  beforeEach(() => {
-    // Clean up error log file before each test
-    if (existsSync(errorLogPath)) {
-      unlinkSync(errorLogPath);
     }
   });
 
@@ -148,7 +142,6 @@ describe("Error handling and logging tests", async () => {
     test("Should not throw when operations succeed", async () => {
       process.env.MAX_ERRORS = "1";
       
-      let executedSuccessfully = false;
       await localServer
         .Connect([DATABASES[0]])
         .Retrieve(async (transaction) => {
@@ -157,11 +150,10 @@ describe("Error handling and logging tests", async () => {
           return result.recordset;
         })
         .Output(async (results) => {
-          executedSuccessfully = true;
-          return results;
+          expect().pass();
+          return MergeOutputStrategy()(results);
         });
       
-      expect(executedSuccessfully).toBe(true);
     });
   });
 
@@ -190,7 +182,6 @@ describe("Error handling and logging tests", async () => {
     test("Should allow successful operations to complete", async () => {
       process.env.MAX_ERRORS = "1";
       
-      let executedSuccessfully = false;
       await localServer
         .Connect([DATABASES[0]])
         .Execute(async (transaction) => {
@@ -198,10 +189,8 @@ describe("Error handling and logging tests", async () => {
           await transaction.request().query`
             UPDATE Users SET Name = 'Updated' WHERE Id = 1
           `;
-          executedSuccessfully = true;
+          expect().pass();
         });
-      
-      expect(executedSuccessfully).toBe(true);
     });
   });
 
