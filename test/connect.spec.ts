@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test, mock, afterEach} from 'bun:test'
+import { beforeAll, describe, expect, test, mock, afterEach, afterAll } from 'bun:test'
 import { AzureSqlEdge, SQL_PASSWORD } from './container/container'
 import { Server } from '../src';
 import { UserAndPassword } from '../src/pipes/auth/strategies';
@@ -25,6 +25,10 @@ describe('Connection overloads', async () => {
         await SetupDatabases(container);
         await SetupClientManager(container);
     });
+
+    afterAll(async () => {
+        await LocalServer.Close();
+    })
 
     afterEach(() => {
         mockExecute.mockClear();
@@ -78,12 +82,12 @@ describe('Connection overloads', async () => {
         const firstConnections = await connectionsGenerator.next();
 
         expect(firstConnections.done).toBe(false);
-        expect(firstConnections.value).toHaveLength(2); 
+        expect(firstConnections.value).toHaveLength(2);
         expect(firstConnections.value).toEqual([{
-            database: DATABASES[0]!,
+            database: DATABASES[0],
             connection: expect.any(Promise),
         }, {
-            database: DATABASES[1]!,
+            database: DATABASES[1],
             connection: expect.any(Promise),
         }]);
 
@@ -91,10 +95,10 @@ describe('Connection overloads', async () => {
         expect(secondConnections.done).toBe(false);
         expect(secondConnections.value).toHaveLength(2);
         expect(secondConnections.value).toEqual([{
-            database: DATABASES[2]!,
+            database: DATABASES[2],
             connection: expect.any(Promise),
         }, {
-            database: DATABASES[3]!,
+            database: DATABASES[3],
             connection: expect.any(Promise),
         }]);
 

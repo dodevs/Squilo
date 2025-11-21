@@ -10,7 +10,7 @@ export const DATABASES = [
     "TestDB3",
     "TestDB4",
     "TestDB5",
-] as const;
+];
 
 export const SetupClientManager = async (container: StartedTestContainer) => {
     const masterConn = await connect({
@@ -45,10 +45,10 @@ export const SetupClientManager = async (container: StartedTestContainer) => {
     `);
 
     const table = new Table("Clients");
-    table.columns.add("Name", NVarChar(255), { nullable: false});
-    table.columns.add("DatabaseName", NVarChar(255), { nullable: false});
-    table.columns.add("Active", Bit(), { nullable: false});
-    
+    table.columns.add("Name", NVarChar(255), { nullable: false });
+    table.columns.add("DatabaseName", NVarChar(255), { nullable: false });
+    table.columns.add("Active", Bit(), { nullable: false });
+
     for (const database of DATABASES) {
         table.rows.add(database, database, 1);
     }
@@ -72,6 +72,6 @@ export const SetupDatabases = async (container: StartedTestContainer) => {
             END
         `);
     }
-    
+
     await conn.close();
 }
