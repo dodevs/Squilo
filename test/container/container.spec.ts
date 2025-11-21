@@ -22,8 +22,8 @@ describe('SQL Server', async () => {
     })
 
     afterAll(async () => {
-        await sqlClient.close();
-        await container.stop();
+        await sqlClient?.close();
+        await container?.stop();
     })
 
     it('should connect to the database', async () => {
