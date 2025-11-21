@@ -1,0 +1,6 @@
+[test]
+timeout = 60000
+coverage = true
+coverageThreshold = 0.9
+coverageDir = "./coverage"
+coverageReporter = ["text", "lcov"]
