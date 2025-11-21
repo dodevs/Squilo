@@ -15,7 +15,7 @@ describe('Squilo input test', async () => {
             encrypt: false
         },
     })
-    .Auth(UserAndPassword("sa", SQL_PASSWORD));
+        .Auth(UserAndPassword("sa", SQL_PASSWORD));
 
     beforeAll(async () => {
         await SetupDatabases(container);
@@ -31,7 +31,7 @@ describe('Squilo input test', async () => {
         let email: string | null = "joe.doe@example.com";
 
         // Execute the insert operation and store the promise
-        const executePromise = localServer
+        await localServer
             .Connect(DATABASES)
             .Input<Omit<User, "Id">>(() => {
                 return {
@@ -45,9 +45,6 @@ describe('Squilo input test', async () => {
                     VALUES (${user.Name}, ${user.Email})
                 `;
             });
-            
-        // Wait for the execute operation to complete before retrieving
-        await executePromise;
 
         const users = await localServer
             .Connect(DATABASES)
@@ -61,7 +58,7 @@ describe('Squilo input test', async () => {
             .Output(MergeOutputStrategy());
 
         expect(users).toHaveLength(5);
-        
+
         const everyUserIsJoe = users.every(user => user.Name === name && user.Email === email);
         expect(everyUserIsJoe).toBe(true);
     })

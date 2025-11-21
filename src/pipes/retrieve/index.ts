@@ -10,7 +10,7 @@ const ENV = LoadEnv();
 let ERRORS_COUNT = 0;
 
 export const Retrieve = <TParam>(
-    connections$: (databases: string[]) => Generator<DatabaseConnection[]>, 
+    connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
     databases$: Promise<string[]>,
     input: TParam
 ) => {
@@ -56,7 +56,7 @@ export const Retrieve = <TParam>(
                 singlerBar.start(databases.length, 0);
             }
 
-            for (const connectionBatch of connections$(databases)) {
+            for await (const connectionBatch of connections$(databases)) {
                 const executions = connectionBatch.map(executeFn);
                 await Promise.allSettled(executions);
             }

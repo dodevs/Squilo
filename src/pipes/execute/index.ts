@@ -9,7 +9,7 @@ let ERRORS_COUNT = 0;
 
 
 export const Execute = <TParam>(
-    connections$: (databases: string[]) => Generator<DatabaseConnection[]>, 
+    connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
     databases$: Promise<string[]>,
     input: TParam
 ) => {
@@ -30,7 +30,7 @@ export const Execute = <TParam>(
                 if (Bun.env.NODE_ENV !== 'test') {
                     singlerBar.increment(1, { database: dc.database });
                 }
-            } 
+            }
             catch (error) {
                 await transaction.rollback();
                 await AppendError(dc.database, error as ErrorType);
@@ -49,7 +49,7 @@ export const Execute = <TParam>(
             singlerBar.start(databases.length, 0);
         }
 
-        for (const connectionBatch of connections$(databases)) {
+        for await (const connectionBatch of connections$(databases)) {
             const executions = connectionBatch.map(executeFn);
             await Promise.allSettled(executions);
         }
