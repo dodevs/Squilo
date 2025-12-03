@@ -18,7 +18,7 @@ import { cwd } from "process";
 const SCOPES = ["https://database.windows.net//.default"];
 
 const cacheAccess = (hash: string) => {
-    const cacheFilePath = path.join(cwd(), `${hash}.json`);
+    const cacheFilePath = path.join(cwd(), `./.active-directory-cache/${hash}.json`);
 
     const before = async (cacheContext: TokenCacheContext) => {
         try {
