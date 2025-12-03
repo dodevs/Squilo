@@ -1,12 +1,8 @@
 import type { Transaction } from 'mssql';
 import type { DatabaseConnection } from "../connect/types";
 import { Presets, SingleBar } from 'cli-progress';
-import { AppendError, CleanErrors, type ErrorType } from '../../utils/append-error';
-import { LoadEnv } from '../../utils/load-env';
-
-const ENV = LoadEnv();
-let ERRORS_COUNT = 0;
-
+import { CleanErrors } from '../../utils/append-error';
+import { TransactionRunner } from '../shared/transaction-runner';
 
 export const Execute = <TParam>(
     connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
@@ -20,27 +16,12 @@ export const Execute = <TParam>(
             format: `{bar} {percentage}% | {value}/{total} | {database}`
         }, Presets.shades_classic);
 
-        const executeFn = async (dc: DatabaseConnection): Promise<void> => {
-            const opened = await dc.connection;
-            const transaction = opened.transaction()
-            try {
-                await transaction.begin();
-                await fn(transaction, dc.database, input);
-                await transaction.commit();
-                if (Bun.env.NODE_ENV !== 'test') {
-                    singlerBar.increment(1, { database: dc.database });
-                }
-            }
-            catch (error) {
-                await transaction.rollback();
-                await AppendError(dc.database, error as ErrorType);
-
-                if (++ERRORS_COUNT > ENV.MAX_ERRORS) {
-                    console.error('Max errors reached, exiting...');
-                    process.exit(1);
-                }
-            }
-        };
+        const executeFn = (dc: DatabaseConnection) => TransactionRunner()({
+            connection: dc,
+            input,
+            fn,
+            singleBar: singlerBar,
+        });
 
         await CleanErrors();
         const databases = await databases$;

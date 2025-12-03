@@ -3,11 +3,8 @@ import { Output } from "../output"
 import type { DatabaseConnection } from "../connect/types";
 import type { RetrieveChain } from "./types";
 import { Presets, SingleBar } from "cli-progress";
-import { LoadEnv } from "../../utils/load-env";
-import { AppendError, CleanErrors, type ErrorType } from "../../utils/append-error";
-
-const ENV = LoadEnv();
-let ERRORS_COUNT = 0;
+import { CleanErrors, type ErrorType } from "../../utils/append-error";
+import { TransactionRunner } from "../shared/transaction-runner";
 
 export const Retrieve = <TParam>(
     connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
@@ -22,30 +19,18 @@ export const Retrieve = <TParam>(
             format: `{bar} {percentage}% | {value}/{total} | {database}`
         }, Presets.shades_classic);
 
-        const executeFn = async (dc: DatabaseConnection) => {
-            const opened = await dc.connection;
-            const transaction = opened.transaction();
-            try {
-                await transaction.begin();
-                const result = await fn(transaction, dc.database, input);
-                transaction.commit();
-
+        const executeFn = (dc: DatabaseConnection) => TransactionRunner()({
+            connection: dc,
+            input,
+            fn,
+            onSuccess: async (result) => {
                 await writer.write({ [dc.database]: result });
-
-                if (Bun.env.NODE_ENV !== 'test') {
-                    singlerBar.increment(1, { database: dc.database });
-                }
-            } catch (error) {
-                await transaction.rollback();
-                await AppendError(dc.database, error as ErrorType);
-
-                if (++ERRORS_COUNT > ENV.MAX_ERRORS) {
-                    await writable.abort(error as ErrorType);
-                    console.error('Max errors reached, exiting...');
-                    process.exit(1);
-                }
-            }
-        };
+            },
+            onError: async (error) => {
+                await writable.abort(error as ErrorType);
+            },
+            singleBar: singlerBar,
+        });
 
         // Process all connections and close the stream when done
         (async () => {
