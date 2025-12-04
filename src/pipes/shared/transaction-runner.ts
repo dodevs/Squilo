@@ -13,9 +13,9 @@ export interface TransactionRunnerOptions<TParam, TReturn> {
     singleBar?: SingleBar;
 }
 
-export const TransactionRunner = (maxErrors?: number) => {
+export const TransactionRunner = () => {
     const ENV = LoadEnv();
-    const limit = maxErrors ?? ENV.MAX_ERRORS;
+    const limit = ENV.MAX_ERRORS;
     let errorsCount = 0;
 
     return async <TParam, TReturn>({
