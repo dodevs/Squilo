@@ -70,4 +70,5 @@ export const AppendError = (database: string, error: ErrorType) => {
     };
 
     writer.write(JSON.stringify(content) + '\n');
+    writer.flush();
 }
