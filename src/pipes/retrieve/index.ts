@@ -19,7 +19,9 @@ export const Retrieve = <TParam>(
             format: `{bar} {percentage}% | {value}/{total} | {database}`
         }, Presets.shades_classic);
 
-        const executeFn = (dc: DatabaseConnection) => TransactionRunner()({
+        const runner = TransactionRunner();
+
+        const executeFn = (dc: DatabaseConnection) => runner({
             connection: dc,
             input,
             fn,
