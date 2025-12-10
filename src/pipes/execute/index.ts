@@ -1,8 +1,7 @@
 import type { Transaction } from 'mssql';
 import type { DatabaseConnection } from "../connect/types";
-import { Presets, SingleBar } from 'cli-progress';
-import { CleanErrors } from '../../utils/append-error';
 import { TransactionRunner } from '../shared/transaction-runner';
+import type { ExecutionError } from './types';
 
 export const Execute = <TParam>(
     connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
@@ -11,25 +10,38 @@ export const Execute = <TParam>(
 ) => {
     return async (
         fn: (transaction: Transaction, database: string, params: TParam) => Promise<void>
-    ): Promise<void> => {
-        const singlerBar = new SingleBar({
-            format: `{bar} {percentage}% | {value}/{total} | {database}`
-        }, Presets.shades_classic);
+    ): Promise<ExecutionError[]> => {
+        const errors: ExecutionError[] = [];
 
-        const runner = TransactionRunner();
+        const [runner, singleBar] = TransactionRunner();
 
         const executeFn = (dc: DatabaseConnection) => runner({
             connection: dc,
             input,
             fn,
-            singleBar: singlerBar,
+            onError: async (error) => {
+                errors.push({
+                    database: dc.database,
+                    error: {
+                        name: error.name,
+                        message: error.message,
+                        stack: error.stack,
+                        code: (error as any).code || undefined,
+                        number: (error as any).number || undefined,
+                        state: (error as any).state || undefined,
+                        class: (error as any).class || undefined,
+                        serverName: (error as any).serverName || undefined,
+                        procName: (error as any).procName || undefined,
+                        lineNumber: (error as any).lineNumber || undefined
+                    }
+                });
+            }
         });
 
-        await CleanErrors();
         const databases = await databases$;
 
         if (Bun.env.NODE_ENV !== 'test') {
-            singlerBar.start(databases.length, 0);
+            singleBar.start(databases.length, 0);
         }
 
         for await (const connectionBatch of connections$(databases)) {
@@ -38,7 +50,9 @@ export const Execute = <TParam>(
         }
 
         if (Bun.env.NODE_ENV !== 'test') {
-            singlerBar.stop();
+            singleBar.stop();
         }
+
+        return errors;
     };
 };

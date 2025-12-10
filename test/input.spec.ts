@@ -31,7 +31,7 @@ describe('Squilo input test', async () => {
         let email: string | null = "joe.doe@example.com";
 
         // Execute the insert operation and store the promise
-        await localServer
+        const errors = await localServer
             .Connect(DATABASES)
             .Input<Omit<User, "Id">>(() => {
                 return {
@@ -39,14 +39,17 @@ describe('Squilo input test', async () => {
                     Email: email!,
                 }
             })
-            .Execute(async (transaction, _, user) => {
+            .Execute(async (transaction, database, user) => {
+                console.log(`inserting ${user.Name} ${user.Email} into Users table for database ${database}`)
                 await transaction.request().query`
                     INSERT INTO Users (Name, Email)
                     VALUES (${user.Name}, ${user.Email})
                 `;
             });
 
-        const users = await localServer
+        expect(errors.length).toBe(0);
+
+        const [retrieveErrors, users] = await localServer
             .Connect(DATABASES)
             .Retrieve(async (transaction) => {
                 const result = await transaction.request().query<User>`
@@ -57,6 +60,7 @@ describe('Squilo input test', async () => {
             })
             .Output(MergeOutputStrategy());
 
+        expect(retrieveErrors.length).toBe(0);
         expect(users).toHaveLength(5);
 
         const everyUserIsJoe = users.every(user => user.Name === name && user.Email === email);

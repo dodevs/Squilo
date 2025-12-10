@@ -2,9 +2,8 @@ import type { Transaction } from "mssql";
 import { Output } from "../output"
 import type { DatabaseConnection } from "../connect/types";
 import type { RetrieveChain } from "./types";
-import { Presets, SingleBar } from "cli-progress";
-import { CleanErrors, type ErrorType } from "../../utils/append-error";
 import { TransactionRunner } from "../shared/transaction-runner";
+import type { ExecutionError } from "../execute/types";
 
 export const Retrieve = <TParam>(
     connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
@@ -12,35 +11,31 @@ export const Retrieve = <TParam>(
     input: TParam
 ) => {
     return <TReturn>(fn: (transaction: Transaction, database: string, params: TParam) => Promise<TReturn>): RetrieveChain<TReturn> => {
-        const { readable, writable } = new TransformStream<Record<string, TReturn>, Record<string, TReturn>>();
-        const writer = writable.getWriter();
+        const { readable: readableData, writable: writableData } = new TransformStream<Record<string, TReturn>, Record<string, TReturn>>();
+        const { readable: readableError, writable: writableError } = new TransformStream<ExecutionError, ExecutionError>();
+        const dataWriter = writableData.getWriter();
+        const errorWriter = writableError.getWriter();
 
-        const singlerBar = new SingleBar({
-            format: `{bar} {percentage}% | {value}/{total} | {database}`
-        }, Presets.shades_classic);
-
-        const runner = TransactionRunner();
+        const [runner, singleBar] = TransactionRunner();
 
         const executeFn = (dc: DatabaseConnection) => runner({
             connection: dc,
             input,
             fn,
             onSuccess: async (result) => {
-                await writer.write({ [dc.database]: result });
+                await dataWriter.write({ [dc.database]: result });
             },
             onError: async (error) => {
-                await writable.abort(error as ErrorType);
-            },
-            singleBar: singlerBar,
+                await errorWriter.write({ database: dc.database, error });
+            }
         });
 
         // Process all connections and close the stream when done
         (async () => {
-            await CleanErrors();
             const databases = await databases$;
 
             if (Bun.env.NODE_ENV !== 'test') {
-                singlerBar.start(databases.length, 0);
+                singleBar.start(databases.length, 0);
             }
 
             for await (const connectionBatch of connections$(databases)) {
@@ -49,15 +44,15 @@ export const Retrieve = <TParam>(
             }
 
             if (Bun.env.NODE_ENV !== 'test') {
-                singlerBar.stop();
+                singleBar.stop();
             }
 
-            // Close the writer when all connections are processed
-            await writer.close();
+            await dataWriter.close();
+            await errorWriter.close();
         })();
 
         return {
-            Output: Output(readable)
+            Output: Output(readableData, readableError)
         };
     }
 }

@@ -1,41 +1,67 @@
-import type { Transaction } from 'mssql';
+import type { ConnectionError, PreparedStatementError, RequestError, Transaction, TransactionError } from 'mssql';
 import type { DatabaseConnection } from '../connect/types';
-import { SingleBar } from 'cli-progress';
-import { AppendError, type ErrorType } from '../../utils/append-error';
+import { Presets, SingleBar } from 'cli-progress';
 import { LoadEnv } from '../../utils/load-env';
+
+export type ErrorType = Error | ConnectionError | TransactionError | RequestError | PreparedStatementError;
 
 export interface TransactionRunnerOptions<TParam, TReturn> {
     connection: DatabaseConnection;
     input: TParam;
     fn: (transaction: Transaction, database: string, params: TParam) => Promise<TReturn>;
     onSuccess?: (result: TReturn) => Promise<void> | void;
-    onError?: (error: any) => Promise<void> | void;
-    singleBar?: SingleBar;
+    onError?: (error: ErrorType) => Promise<void> | void;
 }
 
-export const TransactionRunner = () => {
-    const ENV = LoadEnv();
-    const limit = ENV.MAX_ERRORS;
-    let errorsCount = 0;
+class SafeGuardError extends Error {
+    constructor() {
+        super(`Safe guard reached`);
+    }
+}
 
-    return async <TParam, TReturn>({
+export const TransactionRunner = (): [typeof runner, typeof singleBar] => {
+    const singleBar = new SingleBar({
+        format: `{bar} {percentage}% | {value}/{total} | {database}`
+    }, Presets.shades_classic);
+
+    const [guard, trackError] = (() => {
+        const limit = LoadEnv().SAFE_GUARD;
+        let errorsCount = 0, open = false;
+
+        const guard = async () => {
+            if (open) {
+                throw new SafeGuardError();
+            }
+        }
+
+        const trackError = () => {
+            errorsCount++;
+            if (errorsCount >= limit) {
+                open = true;
+            }
+        }
+
+        return [guard, trackError];
+    })()
+
+    const runner = async <TParam, TReturn>({
         connection: dc,
         input,
         fn,
-        onSuccess,
-        onError,
-        singleBar,
+        onSuccess = () => { },
+        onError = () => { }
     }: TransactionRunnerOptions<TParam, TReturn>): Promise<void> => {
-        return dc.connection
+        return guard()
+            .then(() => {
+                if (singleBar && Bun.env.NODE_ENV !== 'test') {
+                    singleBar.update({ database: dc.database });
+                }
+            })
+            .then(() => dc.connection)
             .then(opened => opened.transaction())
             .then(tran => tran.begin()
                 .then(() => fn(tran, dc.database, input))
-                .then(async (result) => {
-                    if (onSuccess) {
-                        await onSuccess(result);
-                    }
-                    return result;
-                })
+                .then(result => onSuccess(result))
                 .then(() => tran.commit())
                 .then(() => {
                     if (singleBar && Bun.env.NODE_ENV !== 'test') {
@@ -45,14 +71,14 @@ export const TransactionRunner = () => {
                 .catch(error => tran.rollback().then(() => { throw error }))
             )
             .catch(async error => {
-                AppendError(dc.database, error as ErrorType);
-                if (++errorsCount > limit) {
-                    if (onError) {
-                        await onError(error);
-                    }
-                    console.error('Max errors reached, exiting...');
-                    process.exit(1);
+                if (error instanceof SafeGuardError) {
+                    return;
                 }
+
+                trackError();
+                onError(error as ErrorType);
             });
     };
+
+    return [runner, singleBar];
 };

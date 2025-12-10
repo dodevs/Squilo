@@ -13,10 +13,10 @@ describe('Squilo test', async () => {
     server: container.getHost(),
     port: container.getMappedPort(1433),
     options: {
-        encrypt: false
+      encrypt: false
     },
   })
-  .Auth(UserAndPassword("sa", SQL_PASSWORD));
+    .Auth(UserAndPassword("sa", SQL_PASSWORD));
 
   beforeAll(async () => {
     await SetupDatabases(container);
@@ -29,7 +29,7 @@ describe('Squilo test', async () => {
 
   it("Get one from each database", async () => {
 
-    const users = await LocalServer
+    const [, users] = await LocalServer
       .Connect(DATABASES)
       .Retrieve(async (transaction) => {
         const result = await transaction.request().query<User>`
@@ -40,29 +40,29 @@ describe('Squilo test', async () => {
       })
       .Output(MergeOutputStrategy());
 
-      expect(users).toHaveLength(5);
-    });
+    expect(users).toHaveLength(5);
+  });
 
-    test('Should fix user\'s email that are ending with extra space', async () => {
-      await LocalServer
-        .Connect(DATABASES)
-        .Execute(async (transaction) => {
-          await transaction.request().query`
+  test('Should fix user\'s email that are ending with extra space', async () => {
+    await LocalServer
+      .Connect(DATABASES)
+      .Execute(async (transaction) => {
+        await transaction.request().query`
             UPDATE Users SET Email = RTRIM(Email)
           `;
-        })
+      })
 
-      const users = await LocalServer
-        .Connect(DATABASES)
-        .Retrieve(async (transaction) => {
-          const result = await transaction.request().query<User>`
+    const [, users] = await LocalServer
+      .Connect(DATABASES)
+      .Retrieve(async (transaction) => {
+        const result = await transaction.request().query<User>`
             SELECT * FROM Users
           `;
 
-          return result.recordset;
-        })
-        .Output(MergeOutputStrategy());
+        return result.recordset;
+      })
+      .Output(MergeOutputStrategy());
 
-      expect(users.every((user) => user.Email.endsWith(" ") === false)).toBe(true);
-    })
+    expect(users.every((user) => user.Email.endsWith(" ") === false)).toBe(true);
+  })
 });

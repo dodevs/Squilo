@@ -1,5 +1,5 @@
-type Env =  {
-    MAX_ERRORS: number;
+type Env = {
+    SAFE_GUARD: number;
 }
 
 type StringEnv = {
@@ -7,12 +7,12 @@ type StringEnv = {
 }
 
 declare module "bun" {
-    interface Env extends StringEnv {}
+    interface Env extends StringEnv { }
 }
 
 export const LoadEnv = (): Env => {
-    const MAX_ERRORS = Number.parseInt(Bun.env.MAX_ERRORS || '1', 10);
+    const SAFE_GUARD = Number.parseInt(Bun.env.SAFE_GUARD || '1', 10);
     return {
-        MAX_ERRORS
+        SAFE_GUARD: SAFE_GUARD
     }
 }

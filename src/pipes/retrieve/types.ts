@@ -1,5 +1,6 @@
 import type { OutputStrategy } from "../output/types";
+import type { ExecutionError } from "../execute/types";
 
 export type RetrieveChain<TReturn> = {
-    Output<TOutput>(strategy: OutputStrategy<TReturn, TOutput>): Promise<TOutput>;
+    Output<TOutput>(strategy: OutputStrategy<TReturn, TOutput>): Promise<[ExecutionError[], TOutput]>;
 }
