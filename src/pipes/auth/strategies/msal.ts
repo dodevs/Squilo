@@ -12,7 +12,7 @@ import {
 
 import * as path from "path";
 import type { ServerConfig } from "../../server/types";
-import type { AuthStrategy } from "../types";
+import type { AuthStrategy } from "./types";
 import { cwd } from "process";
 
 const SCOPES = ["https://database.windows.net//.default"];
@@ -62,7 +62,7 @@ const msalConfig = (config: NodeAuthOptions, cachePlugin: ICachePlugin) => ({
     },
 } as Configuration);
 
-export const GetToken = async (config: NodeAuthOptions) => {
+export const GetToken = async (config: NodeAuthOptions): Promise<string> => {
     const tenantId = config.authority?.replace("https://login.microsoftonline.com/", "");
     const clientId = config.clientId;
 

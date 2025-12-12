@@ -1,8 +1,33 @@
 {
   "name": "squilo",
   "version": "0.2.4",
-  "module": "index.ts",
   "type": "module",
+  "files": [
+    "dist"
+  ],
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./auth": {
+      "import": {
+        "types": "./dist/pipes/auth/strategies/index.d.ts",
+        "default": "./dist/pipes/auth/strategies/index.js"
+      }
+    },
+    "./output": {
+      "import": {
+        "types": "./dist/pipes/output/strategies/index.d.ts",
+        "default": "./dist/pipes/output/strategies/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -14,24 +39,19 @@
     "name": "Douglas da Silva Sousa",
     "email": "douglass.sousa@outlook.com.br"
   },
-  "files": [
-    "src/**/*"
-  ],
-  "exports": {
-    ".": "./src/index.ts",
-    "./auth/strategies": "./src/pipes/auth/strategies/index.ts",
-    "./output/strategies": "./src/pipes/output/strategies/index.ts"
-  },
   "scripts": {
     "test": "bun test",
     "test:watch": "bun test --watch",
-    "test:debug": "bun test --inspect"
+    "test:debug": "bun test --inspect",
+    "build": "bunup"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.6",
     "@faker-js/faker": "^10.1.0",
     "@types/bun": "latest",
+    "@types/mssql": "^9.1.8",
     "@types/cli-progress": "^3.11.6",
+    "bunup": "^0.16.10",
     "testcontainers": "^11.7.1"
   },
   "peerDependencies": {
@@ -39,7 +59,6 @@
   },
   "dependencies": {
     "@azure/msal-node": "^3.8.0",
-    "@types/mssql": "^9.1.8",
     "cli-progress": "^3.12.0",
     "mssql": "^11.0.1",
     "open": "^10.2.0",

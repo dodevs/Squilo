@@ -1,5 +1,6 @@
 import type { config } from "mssql";
-import type { AuthStrategy, AuthenticationChain } from "../auth/types";
+import type { AuthenticationChain } from "../auth/types";
+import type { AuthStrategy } from "../auth/strategies/types";
 
 export type ServerConfig = Omit<config, "authentication" | "user" | "password">;
 

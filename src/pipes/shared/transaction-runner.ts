@@ -13,13 +13,15 @@ export interface TransactionRunnerOptions<TParam, TReturn> {
     onError?: (error: ErrorType) => Promise<void> | void;
 }
 
+export type TransactionRunner = <TParam, TReturn>(options: TransactionRunnerOptions<TParam, TReturn>) => Promise<void>;
+
 class SafeGuardError extends Error {
     constructor() {
         super(`Safe guard reached`);
     }
 }
 
-export const TransactionRunner = (): [typeof runner, typeof singleBar] => {
+export const TransactionRunner = (): [TransactionRunner, SingleBar] => {
     const singleBar = new SingleBar({
         format: `{bar} {percentage}% | {value}/{total} | {database}`
     }, Presets.shades_classic);

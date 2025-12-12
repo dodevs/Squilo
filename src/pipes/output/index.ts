@@ -1,5 +1,5 @@
 import type { ExecutionError } from "../execute/types";
-import type { OutputStrategy } from "./types";
+import type { OutputStrategy } from "./strategies/types";
 
 export const Output =
     <TReturn, TOutput = void>(

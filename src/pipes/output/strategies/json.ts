@@ -1,8 +1,8 @@
-import type { OutputStrategy } from '../types';
+import type { OutputStrategy } from './types';
 
 export const JsonOutputStrategy = <TData>(): OutputStrategy<TData, string> => async (result) => {
   const data: Record<string, TData[]> = {};
-  
+
   for await (const item of result) {
     Object.assign(data, item);
   }
