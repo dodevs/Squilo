@@ -4,7 +4,7 @@ import type { StartedTestContainer } from "testcontainers";
 
 export const CLIENTS_MANAGER_DATABASE = 'ClientsManager' as const;
 
-export const DATABASES = [
+export const DATABASES: string[] = [
     "TestDB1",
     "TestDB2",
     "TestDB3",
@@ -12,7 +12,7 @@ export const DATABASES = [
     "TestDB5",
 ];
 
-export const SetupClientManager = async (container: StartedTestContainer) => {
+export const SetupClientManager = async (container: StartedTestContainer): Promise<void> => {
     const masterConn = await connect({
         ...CONFIG(container),
         database: "master"
@@ -58,7 +58,7 @@ export const SetupClientManager = async (container: StartedTestContainer) => {
     await clientManagerConn.close();
 }
 
-export const SetupDatabases = async (container: StartedTestContainer) => {
+export const SetupDatabases = async (container: StartedTestContainer): Promise<void> => {
     const conn = await connect({
         ...CONFIG(container),
         database: "master"
