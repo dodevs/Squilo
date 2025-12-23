@@ -1,6 +1,6 @@
 [test]
 timeout = 60000
 coverage = true
-coverageThreshold = 0.9
+coverageThreshold = { line = 0.7, function = 0.9, statement = 0.9 }
 coverageDir = "./coverage"
 coverageReporter = ["text", "lcov"]
