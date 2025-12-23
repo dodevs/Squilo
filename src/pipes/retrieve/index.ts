@@ -2,8 +2,8 @@ import type { Transaction } from "mssql";
 import { Output } from "../output"
 import type { DatabaseConnection } from "../connect/types";
 import type { RetrieveChain } from "./types";
-import { TransactionRunner } from "../shared/transaction-runner";
-import type { ExecutionError } from "../execute/types";
+import { Runner } from "../shared/runner";
+import type { ExecutionError } from "../shared/runner/types";
 
 export const Retrieve = <TParam>(
     connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
@@ -16,7 +16,7 @@ export const Retrieve = <TParam>(
         const dataWriter = writableData.getWriter();
         const errorWriter = writableError.getWriter();
 
-        const [runner, singleBar] = TransactionRunner();
+        const [runner, singleBar] = Runner();
 
         const executeFn = (dc: DatabaseConnection) => runner({
             connection: dc,
@@ -26,7 +26,7 @@ export const Retrieve = <TParam>(
                 await dataWriter.write({ [dc.database]: result });
             },
             onError: async (error) => {
-                await errorWriter.write({ database: dc.database, error });
+                await errorWriter.write({ [dc.database]: error });
             }
         });
 

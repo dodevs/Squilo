@@ -1,7 +1,7 @@
 import type { Transaction } from 'mssql';
 import type { DatabaseConnection } from "../connect/types";
-import { TransactionRunner } from '../shared/transaction-runner';
-import type { ExecutionError } from './types';
+import { Runner } from '../shared/runner';
+import type { ExecutionError } from '../shared/runner/types';
 
 export const Execute = <TParam>(
     connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
@@ -13,7 +13,7 @@ export const Execute = <TParam>(
     ): Promise<ExecutionError[]> => {
         const errors: ExecutionError[] = [];
 
-        const [runner, singleBar] = TransactionRunner();
+        const [runner, singleBar] = Runner();
 
         const executeFn = (dc: DatabaseConnection) => runner({
             connection: dc,
@@ -21,8 +21,7 @@ export const Execute = <TParam>(
             fn,
             onError: async (error) => {
                 errors.push({
-                    database: dc.database,
-                    error: {
+                    [dc.database]: {
                         name: error.name,
                         message: error.message,
                         stack: error.stack,

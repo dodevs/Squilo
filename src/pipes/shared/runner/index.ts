@@ -1,27 +1,8 @@
-import type { ConnectionError, PreparedStatementError, RequestError, Transaction, TransactionError } from 'mssql';
-import type { DatabaseConnection } from '../connect/types';
 import { Presets, SingleBar } from 'cli-progress';
-import { LoadEnv } from '../../utils/load-env';
+import { LoadEnv } from '../../../utils/load-env';
+import { type ErrorType, type RunnerOptions, type TransactionRunner, SafeGuardError } from './types';
 
-export type ErrorType = Error | ConnectionError | TransactionError | RequestError | PreparedStatementError;
-
-export interface TransactionRunnerOptions<TParam, TReturn> {
-    connection: DatabaseConnection;
-    input: TParam;
-    fn: (transaction: Transaction, database: string, params: TParam) => Promise<TReturn>;
-    onSuccess?: (result: TReturn) => Promise<void> | void;
-    onError?: (error: ErrorType) => Promise<void> | void;
-}
-
-export type TransactionRunner = <TParam, TReturn>(options: TransactionRunnerOptions<TParam, TReturn>) => Promise<void>;
-
-class SafeGuardError extends Error {
-    constructor() {
-        super(`Safe guard reached`);
-    }
-}
-
-export const TransactionRunner = (): [TransactionRunner, SingleBar] => {
+export const Runner = (): [TransactionRunner, SingleBar] => {
     const singleBar = new SingleBar({
         format: `{bar} {percentage}% | {value}/{total} | {database}`
     }, Presets.shades_classic);
@@ -52,7 +33,7 @@ export const TransactionRunner = (): [TransactionRunner, SingleBar] => {
         fn,
         onSuccess = () => { },
         onError = () => { }
-    }: TransactionRunnerOptions<TParam, TReturn>): Promise<void> => {
+    }: RunnerOptions<TParam, TReturn>): Promise<void> => {
         return guard()
             .then(() => {
                 if (singleBar && Bun.env.NODE_ENV !== 'test') {
