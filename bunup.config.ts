@@ -1,13 +1,5 @@
 import { defineConfig, type BuildOptions, type DefineConfigItem } from 'bunup'
 
-const external = [
-    '@azure/msal-node',
-    'mssql',
-    'cli-progress',
-    'open',
-    'xlsx',
-];
-
 const config: DefineConfigItem = defineConfig({
     entry: [
         './src/index.ts',
@@ -38,7 +30,7 @@ const config: DefineConfigItem = defineConfig({
         },
     },
     splitting: true,
-    external,
+    //external,
     dts: {
         splitting: false
     }
