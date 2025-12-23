@@ -43,7 +43,8 @@
     "test": "bun test",
     "test:watch": "bun test --watch",
     "test:debug": "bun test --inspect",
-    "build": "bunup"
+    "build": "bunup",
+    "prepublishOnly": "bun run build"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.6",
