@@ -32,7 +32,7 @@ const config: DefineConfigItem = defineConfig({
     splitting: true,
     //external,
     dts: {
-        splitting: false
+        splitting: true
     }
 }) as unknown as DefineConfigItem;
 
