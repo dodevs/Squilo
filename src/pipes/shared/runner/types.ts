@@ -14,6 +14,7 @@ export interface RunnerOptions<TParam, TReturn> {
 export type TransactionRunner = <TParam, TReturn>(options: RunnerOptions<TParam, TReturn>) => Promise<void>;
 
 export type ExecutionError = Record<string, ErrorType>;
+export type ExecutionData<TReturn> = { database: string, data: TReturn }
 
 export class SafeGuardError extends Error {
     constructor() {

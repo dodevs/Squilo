@@ -3,7 +3,7 @@ import { Output } from "../output"
 import type { DatabaseConnection } from "../connect/types";
 import type { RetrieveChain } from "./types";
 import { Runner } from "../shared/runner";
-import type { ExecutionError } from "../shared/runner/types";
+import type { ExecutionData, ExecutionError } from "../shared/runner/types";
 
 export const Retrieve = <TParam>(
     connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
@@ -11,7 +11,7 @@ export const Retrieve = <TParam>(
     input: TParam
 ) => {
     return <TReturn>(fn: (transaction: Transaction, database: string, params: TParam) => Promise<TReturn>): RetrieveChain<TReturn> => {
-        const { readable: readableData, writable: writableData } = new TransformStream<Record<string, TReturn>, Record<string, TReturn>>();
+        const { readable: readableData, writable: writableData } = new TransformStream<ExecutionData<TReturn>, ExecutionData<TReturn>>();
         const { readable: readableError, writable: writableError } = new TransformStream<ExecutionError, ExecutionError>();
         const dataWriter = writableData.getWriter();
         const errorWriter = writableError.getWriter();
@@ -23,7 +23,7 @@ export const Retrieve = <TParam>(
             input,
             fn,
             onSuccess: async (result) => {
-                await dataWriter.write({ [dc.database]: result });
+                await dataWriter.write({ database: dc.database, data: result });
             },
             onError: async (error) => {
                 await errorWriter.write({ [dc.database]: error });

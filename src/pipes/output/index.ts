@@ -1,9 +1,9 @@
-import type { ExecutionError } from "../execute/types";
+import type { ExecutionData, ExecutionError } from "../shared/runner/types";
 import type { OutputStrategy } from "./strategies/types";
 
 export const Output =
     <TReturn, TOutput = void>(
-        data: ReadableStream<Record<string, TReturn>>,
+        data: ReadableStream<ExecutionData<TReturn >>,
         error: ReadableStream<ExecutionError>
     ) =>
         async (strategy: OutputStrategy<TReturn, TOutput>): Promise<[ExecutionError[], TOutput]> => {

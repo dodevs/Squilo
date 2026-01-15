@@ -1,7 +1,8 @@
+import type { ExecutionData } from '../../shared/runner/types';
 import type { OutputStrategy } from './types';
 
-const checkEmpty = (item: Record<string, unknown>) => {
-  const value = Object.values(item)[0];
+const checkEmpty = (item: ExecutionData<unknown>) => {
+  const value = item.data;
   if (value instanceof Array) {
     return value.length === 0;
   }
@@ -14,13 +15,13 @@ const checkEmpty = (item: Record<string, unknown>) => {
 }
 
 export const JsonOutputStrategy = <TData>(allowEmpty: boolean = true): OutputStrategy<TData, string> => async (result) => {
-  const data: Record<string, TData[]> = {};
+  const data: Record<string, TData> = {};
 
   for await (const item of result) {
     if (!allowEmpty && checkEmpty(item)) {
       continue;
     }
-    Object.assign(data, item);
+    data[item.database] = item.data;
   }
 
   let filename = process.argv[1]?.replace(/\.(?:js|ts)/, '')

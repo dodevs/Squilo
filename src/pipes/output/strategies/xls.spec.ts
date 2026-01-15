@@ -7,8 +7,12 @@ describe("XlsOutputStrategy", () => {
     const mockData = new ReadableStream({
       start(controller) {
         controller.enqueue({
-          "database1": [{ id: 1, name: "Alice", age: 30 }, { id: 2, name: "Bob", age: 25 }],
-          "database2": [{ id: 3, name: "Charlie", age: 35 }]
+          database: "database1",
+          data: [{ id: 1, name: "Alice", age: 30 }, { id: 2, name: "Bob", age: 25 }]
+        });
+        controller.enqueue({
+          database: "database2",
+          data: [{ id: 3, name: "Charlie", age: 35 }]
         });
         controller.close();
       }
@@ -32,8 +36,12 @@ describe("XlsOutputStrategy", () => {
     const mockData = new ReadableStream({
       start(controller) {
         controller.enqueue({
-          "database1": [{ id: 1, name: "Alice", age: 30 }],
-          "database2": [{ id: 2, name: "Bob", age: 25 }]
+          database: "database1",
+          data: [{ id: 1, name: "Alice", age: 30 }]
+        });
+        controller.enqueue({
+          database: "database2",
+          data: [{ id: 2, name: "Bob", age: 25 }]
         });
         controller.close();
       }
@@ -74,8 +82,12 @@ describe("XlsOutputStrategy", () => {
     const mockData = new ReadableStream({
       start(controller) {
         controller.enqueue({
-          "database1": [{ id: 1, name: "Alice", age: 30 }, { id: 2, name: "Bob", age: 25 }],
-          "database2": [{ id: 1, name: "Charlie", age: 35 }, { id: 2, name: "Dave", age: 40 }]
+          database: "database1",
+          data: [{ id: 1, name: "Alice", age: 30 }, { id: 2, name: "Bob", age: 25 }]
+        });
+        controller.enqueue({
+          database: "database2",
+          data: [{ id: 1, name: "Charlie", age: 35 }, { id: 2, name: "Dave", age: 40 }]
         });
         controller.close();
       }

@@ -1,28 +1,30 @@
 import * as XLSX from 'xlsx';
 import type { OutputStrategy } from './types';
+import type { ExecutionData } from '../../shared/runner/types';
 
 async function processSeparateSheets<TData>(
-  result: ReadableStream<Record<string, TData>>,
+  result: ReadableStream<ExecutionData<TData>>,
   workbook: XLSX.WorkBook
 ): Promise<boolean> {
   let hasData = false;
 
   for await (const dbResult of result) {
-    for (const [database, data] of Object.entries(dbResult)) {
-      let sheetData: unknown[] = [];
-      if (Array.isArray(data)) {
-        sheetData = data;
-      } else if (data && typeof data === 'object') {
-        sheetData = [data];
-      } else {
-        sheetData = [{ value: data }];
-      }
+    const database = dbResult.database;
+    const data = dbResult.data;
 
-      if (sheetData.length > 0) {
-        const worksheet = XLSX.utils.json_to_sheet(sheetData);
-        XLSX.utils.book_append_sheet(workbook, worksheet, database);
-        hasData = true;
-      }
+    let sheetData: unknown[] = [];
+    if (Array.isArray(data)) {
+      sheetData = data;
+    } else if (data && typeof data === 'object') {
+      sheetData = [data];
+    } else {
+      sheetData = [{ value: data }];
+    }
+
+    if (sheetData.length > 0) {
+      const worksheet = XLSX.utils.json_to_sheet(sheetData);
+      XLSX.utils.book_append_sheet(workbook, worksheet, database);
+      hasData = true;
     }
   }
 
@@ -30,7 +32,7 @@ async function processSeparateSheets<TData>(
 }
 
 async function processCombinedSheet<TData>(
-  result: ReadableStream<Record<string, TData>>,
+  result: ReadableStream<ExecutionData<TData>>,
   workbook: XLSX.WorkBook
 ): Promise<boolean> {
   const allData: unknown[] = [];
@@ -38,8 +40,10 @@ async function processCombinedSheet<TData>(
   let currentRow = 1; // Start from row 1 (header is row 0)
 
   for await (const dbResult of result) {
-    for (const [database, data] of Object.entries(dbResult)) {
-      let sheetData: unknown[] = [];
+    const database = dbResult.database;
+    const data = dbResult.data;
+
+    let sheetData: unknown[] = [];
       if (Array.isArray(data)) {
         sheetData = data.map(item => ({ database, ...item }));
       } else if (data && typeof data === 'object') {
@@ -56,7 +60,6 @@ async function processCombinedSheet<TData>(
       currentRow += sheetData.length;
 
       allData.push(...sheetData);
-    }
   }
 
   if (allData.length === 0) {
@@ -80,7 +83,7 @@ async function processCombinedSheet<TData>(
   return true;
 }
 
-export const XlsOutputStrategy = <TData>(unique: boolean = false): OutputStrategy<TData, string> => async (result) => {
+export const XlsOutputStrategy = <TData extends []>(unique: boolean = false): OutputStrategy<TData, string> => async (result) => {
   const workbook = XLSX.utils.book_new();
 
   if (unique) {

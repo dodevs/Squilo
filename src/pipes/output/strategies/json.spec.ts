@@ -5,8 +5,8 @@ describe("JsonOutputStrategy", () => {
   test("should write JSON data to file and return filename", async () => {
     const mockData = new ReadableStream({
       start(controller) {
-        controller.enqueue({ "database1": [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }] });
-        controller.enqueue({ "database2": [{ id: 3, name: "Charlie" }] });
+        controller.enqueue({ database: "database1", data: [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }] });
+        controller.enqueue({ database: "database2", data: [{ id: 3, name: "Charlie" }] });
         controller.close();
       }
     });
@@ -29,8 +29,8 @@ describe("JsonOutputStrategy", () => {
   test("should handle some empty data", async () => {
     const mockData = new ReadableStream({
       start(controller) {
-        controller.enqueue({ "database1": [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }] });
-        controller.enqueue({ "database2": [] });
+        controller.enqueue({ database: "database1", data: [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }] });
+        controller.enqueue({ database: "database2", data: [] });
         controller.close();
       }
     });
