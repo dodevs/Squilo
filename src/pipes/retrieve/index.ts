@@ -1,5 +1,6 @@
 import type { Transaction } from "mssql";
 import { Output } from "../output"
+import { Transform } from "../transform"
 import type { DatabaseConnection } from "../connect/types";
 import type { RetrieveChain } from "./types";
 import { Runner } from "../shared/runner";
@@ -52,6 +53,7 @@ export const Retrieve = <TParam>(
         })();
 
         return {
+            Transform: Transform(readableData, readableError),
             Output: Output(readableData, readableError)
         };
     }
