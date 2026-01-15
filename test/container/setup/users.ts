@@ -14,8 +14,8 @@ export const SetupUsers = async (container: StartedTestContainer, options: {
   populate: boolean;
 } = { 
   populate: true 
-}) => {
-    for (const database of DATABASES) {
+}): Promise<void> => {
+  for (const database of DATABASES) {
     const conn = await connect({
       ...CONFIG(container),
       database
