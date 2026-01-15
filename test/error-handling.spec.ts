@@ -22,7 +22,7 @@ describe("Error handling and logging tests", async () => {
 
   beforeAll(async () => {
     await SetupDatabases(container);
-    await SetupUsers(container);
+    await SetupUsers(container, { populate: false });
 
     originalSafeGuard = process.env.SAFE_GUARD;
   });
@@ -38,26 +38,26 @@ describe("Error handling and logging tests", async () => {
   });
 
   describe("Environment variable loading", () => {
-    test("Should load default MAX_ERRORS value when not set", () => {
+    test("Should load default SAFE_GUARD value when not set", () => {
       delete process.env.SAFE_GUARD;
       const env = LoadEnv();
       expect(env.SAFE_GUARD).toBe(1);
     });
 
-    test("Should load custom MAX_ERRORS value from environment", () => {
+    test("Should load custom SAFE_GUARD value from environment", () => {
       process.env.SAFE_GUARD = "5";
       const env = LoadEnv();
       expect(env.SAFE_GUARD).toBe(5);
     });
 
-    test("Should handle invalid MAX_ERRORS value gracefully", () => {
+    test("Should handle invalid SAFE_GUARD value gracefully", () => {
       process.env.SAFE_GUARD = "invalid";
       const env = LoadEnv();
       expect(env.SAFE_GUARD).toBeNaN();
     });
   });
 
-  describe("MAX_ERRORS behavior in retrieve operations", () => {
+  describe("SAFE_GUARD behavior in retrieve operations", () => {
     test("Should create error log for database errors in retrieve", async () => {
       process.env.SAFE_GUARD = "2";
 
@@ -74,7 +74,7 @@ describe("Error handling and logging tests", async () => {
     });
   });
 
-  describe("MAX_ERRORS behavior in execute operations", () => {
+  describe("SAFE_GUARD behavior in execute operations", () => {
     test("Should create error log for database errors in execute", async () => {
       process.env.SAFE_GUARD = "2";
 
@@ -82,7 +82,7 @@ describe("Error handling and logging tests", async () => {
         .Connect(DATABASES)
         .Execute(async (transaction) => {
           await transaction.request().query`
-            INSERT INTO Users (Id, Name, Email, Age) VALUES (1, 'John Doe', 'john.doe@test.com', 30)
+            INSERT INTO NonExistentTable (Id, Name, Email) VALUES (1, 'John Doe', 'john.doe@test.com')
           `;
         });
 

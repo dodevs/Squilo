@@ -21,13 +21,23 @@ describe('Connection overloads', async () => {
         }
     }).Auth(UserAndPassword("sa", SQL_PASSWORD));
 
+    let originalSafeGuard: string | undefined;
+
     beforeAll(async () => {
         await SetupDatabases(container);
         await SetupClientManager(container);
+        originalSafeGuard = process.env.SAFE_GUARD;
     });
 
     afterAll(async () => {
         await LocalServer.Close();
+
+        if (originalSafeGuard) {
+            process.env.SAFE_GUARD = originalSafeGuard;
+        } else {
+            delete process.env.SAFE_GUARD;
+        }
+        
     })
 
     afterEach(() => {
@@ -42,7 +52,7 @@ describe('Connection overloads', async () => {
         expect(mockExecute).toHaveBeenCalledTimes(1);
         const connectionsFn = mockExecute.mock.calls[0]![0];
         const connectionsGenerator = connectionsFn([database]);
-        const uniqueConnection = await connectionsGenerator.next();
+        const uniqueConnection = connectionsGenerator.next();
 
         expect(uniqueConnection.done).toBe(false);
         expect(uniqueConnection.value).toHaveLength(1);
@@ -53,13 +63,14 @@ describe('Connection overloads', async () => {
     });
 
     test('Connect with database list', async () => {
+        process.env.SAFE_GUARD = '0';
         const databases = [DATABASES[0]!, DATABASES[1]!];
         LocalServer.Connect(databases);
 
         expect(mockExecute).toHaveBeenCalledTimes(1);
         const connectionsFn = mockExecute.mock.calls[0]![0];
         const connectionsGenerator = connectionsFn(databases);
-        const connections = await connectionsGenerator.next();
+        const connections = connectionsGenerator.next();
 
         expect(connections.done).toBe(false);
         expect(connections.value).toHaveLength(2);
@@ -73,13 +84,14 @@ describe('Connection overloads', async () => {
     });
 
     test('Connect with limited concurrent database list', async () => {
+        process.env.SAFE_GUARD = '0';
         const databases = [DATABASES[0]!, DATABASES[1]!, DATABASES[2]!, DATABASES[3]!];
         LocalServer.Connect(databases, 2);
 
         expect(mockExecute).toHaveBeenCalledTimes(1);
         const connectionsFn = mockExecute.mock.calls[0]![0];
         const connectionsGenerator = connectionsFn(databases);
-        const firstConnections = await connectionsGenerator.next();
+        const firstConnections = connectionsGenerator.next();
 
         expect(firstConnections.done).toBe(false);
         expect(firstConnections.value).toHaveLength(2);
@@ -91,7 +103,7 @@ describe('Connection overloads', async () => {
             connection: expect.any(Promise),
         }]);
 
-        const secondConnections = await connectionsGenerator.next();
+        const secondConnections = connectionsGenerator.next();
         expect(secondConnections.done).toBe(false);
         expect(secondConnections.value).toHaveLength(2);
         expect(secondConnections.value).toEqual([{
@@ -102,7 +114,7 @@ describe('Connection overloads', async () => {
             connection: expect.any(Promise),
         }]);
 
-        const thirdConnections = await connectionsGenerator.next();
+        const thirdConnections = connectionsGenerator.next();
         expect(thirdConnections.done).toBe(true);
     });
 
