@@ -1,7 +1,7 @@
 import type { ConnectionPool, Transaction } from "mssql";
-import type { InputChain } from "../input/types";
 import type { RetrieveChain } from "../retrieve/types";
-import type { ExecutionError } from "../execute/types";
+import type { ExecutionError } from "../shared/runner/types";
+
 
 export type ConnectOverloads = {
     (database: string): ConnectionChain;
@@ -22,5 +22,4 @@ export type DatabaseConnection = {
 export type ConnectionChain = {
     Execute(fn: (transaction: Transaction, database: string) => Promise<void>): Promise<ExecutionError[]>;
     Retrieve<TResult>(fn: (transaction: Transaction, database: string) => Promise<TResult>): RetrieveChain<TResult>;
-    Input<TParam>(fn: () => TParam): InputChain<TParam>;
 }

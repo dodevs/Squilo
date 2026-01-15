@@ -1,5 +1,4 @@
 import type { Pool } from "../../pool";
-import { Input } from "../input";
 import { Execute } from "../execute";
 import { Retrieve } from "../retrieve";
 
@@ -65,7 +64,6 @@ export const Connect = (pool: Pool): ConnectOverloads => (param: string | string
     connections$ = connections(concurrent);
 
     return {
-        Input: Input(connections$, databases$),
         Execute: Execute(connections$, databases$, null),
         Retrieve: Retrieve(connections$, databases$, null)
     }
