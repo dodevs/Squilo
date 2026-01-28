@@ -47,7 +47,7 @@
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.2.6",
+    "@biomejs/biome": "2.3.11",
     "@faker-js/faker": "^10.1.0",
     "@types/bun": "latest",
     "@types/cli-progress": "^3.11.6",
