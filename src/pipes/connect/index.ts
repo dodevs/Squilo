@@ -2,15 +2,14 @@ import type { Pool } from "../../pool";
 import { Execute } from "../execute";
 import { Retrieve } from "../retrieve";
 
-import type { ConnectOverloads, ConnectionOptions, ConnectionChain, DatabaseConnection } from "./types";
+import type { ConnectionOptions, ConnectionChain, DatabaseConnection, DatabaseObject } from "./types";
 import { LoadEnv } from "../../utils/load-env";
 
-export const Connect = (pool: Pool): ConnectOverloads => (param: string | string[] | ConnectionOptions, concurrent?: number): ConnectionChain => {
-    let connections$: (databases: string[]) => Generator<DatabaseConnection[]>;
-    let databases$: Promise<string[]>;
+export const Connect = (pool: Pool) => <T extends string | DatabaseObject>(param: string | string[] | ConnectionOptions, concurrent?: number): ConnectionChain<T> => {
+    let databases$: Promise<T[]>;
 
-    function connections(concurrent: number = Number.MAX_VALUE): (databases: string[]) => Generator<DatabaseConnection[]> {
-        return function* (databases: string[]) {
+    function connections(concurrent: number = Number.MAX_VALUE): (databases: T[]) => Generator<DatabaseConnection<T>[]> {
+        return function* (databases: T[]) {
             const _databases = [...databases];
             const safe_guard = LoadEnv().SAFE_GUARD;
 
@@ -20,7 +19,7 @@ export const Connect = (pool: Pool): ConnectOverloads => (param: string | string
                 for (const database of guard_test) {
                     yield [{
                         database,
-                        connection: pool.connect({ database })
+                        connection: pool.connect({ database: typeof database === 'string' ? database : database.Database })
                     }];
                 }
             }
@@ -33,38 +32,38 @@ export const Connect = (pool: Pool): ConnectOverloads => (param: string | string
             for (const databases_result_chunk of databases_result_chunks) {
                 yield databases_result_chunk.map(database => ({
                     database,
-                    connection: pool.connect({ database })
+                    connection: pool.connect({ database: typeof database === 'string' ? database : database.Database })
                 }));
             }
         }
     }
 
     if (typeof param === 'string') {
-        databases$ = Promise.resolve([param]);
+        databases$ = Promise.resolve([param as T]);
     }
 
     else if (Array.isArray(param)) {
-        databases$ = Promise.resolve(param);
+        databases$ = Promise.resolve(param as T[]);
     }
 
     else if (typeof param === 'object' && 'query' in param) {
         databases$ = pool
-            .connect({ database: param.database, arrayRowMode: true })
+            .connect({ database: param.database })
             .then(conn => conn
                 .request()
-                .query<string[]>(param.query)
+                .query<T[]>(param.query)
             )
-            .then(result => result.recordset.flat())
+            .then(result => result.recordset)
     }
 
     else {
         throw new Error("Invalid parameter");
     }
 
-    connections$ = connections(concurrent);
+    const connections$ = connections(concurrent);
 
     return {
-        Execute: Execute(connections$, databases$, null),
-        Retrieve: Retrieve(connections$, databases$, null)
+        Execute: Execute(connections$, databases$),
+        Retrieve: Retrieve(connections$, databases$)
     }
 }

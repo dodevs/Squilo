@@ -1,16 +1,35 @@
 import * as XLSX from 'xlsx';
 import type { OutputStrategy } from './types';
-import type { ExecutionData } from '../../shared/runner/types';
+import type { ExecutionError, ExecutionResult } from '../../shared/runner/types';
+import type { DatabaseObject } from '../../connect/types';
 
-async function processSeparateSheets<TData>(
-  result: ReadableStream<ExecutionData<TData>>,
-  workbook: XLSX.WorkBook
-): Promise<boolean> {
-  let hasData = false;
+const checkEmpty = <T, TData>({ data }: ExecutionResult<T, TData>) =>
+  (data === undefined || data === null) || (typeof data === 'object' && Object.keys(data).length === 0);
+
+async function processSeparateSheets<T extends string | DatabaseObject, TData>(
+  result: ReadableStream<ExecutionResult<T, TData>>,
+  workbook: XLSX.WorkBook,
+  includeEmpty = true
+): Promise<ExecutionError<T>[]> {
+  const errors: ExecutionError<T>[] = [];
 
   for await (const dbResult of result) {
     const database = dbResult.database;
     const data = dbResult.data;
+    const error = dbResult.error;
+
+    if (error) {
+      errors.push({database, error});
+      continue;
+    }
+
+    if (checkEmpty(dbResult)) {
+      if (includeEmpty) {
+        const emptyWorksheet = XLSX.utils.json_to_sheet([{ database, message: "No data available" }]);
+        XLSX.utils.book_append_sheet(workbook, emptyWorksheet, typeof database === 'string' ? database : database?.Database);
+      }
+      continue;
+    }
 
     let sheetData: unknown[] = [];
     if (Array.isArray(data)) {
@@ -21,49 +40,60 @@ async function processSeparateSheets<TData>(
       sheetData = [{ value: data }];
     }
 
-    if (sheetData.length > 0) {
-      const worksheet = XLSX.utils.json_to_sheet(sheetData);
-      XLSX.utils.book_append_sheet(workbook, worksheet, database);
-      hasData = true;
-    }
+    const worksheet = XLSX.utils.json_to_sheet(sheetData);
+    XLSX.utils.book_append_sheet(workbook, worksheet, typeof database === 'string' ? database : database?.Database);
   }
 
-  return hasData;
+  return errors;
 }
 
-async function processCombinedSheet<TData>(
-  result: ReadableStream<ExecutionData<TData>>,
-  workbook: XLSX.WorkBook
-): Promise<boolean> {
+async function processCombinedSheet<T extends string | DatabaseObject, TData>(
+  result: ReadableStream<ExecutionResult<T, TData>>,
+  workbook: XLSX.WorkBook,
+  includeEmpty = true
+): Promise<ExecutionError<T>[]> {
   const allData: unknown[] = [];
+  const errors: ExecutionError<T>[] = [];
+
   const databaseGroups: { [database: string]: { startRow: number, endRow: number } } = {};
   let currentRow = 1; // Start from row 1 (header is row 0)
 
   for await (const dbResult of result) {
     const database = dbResult.database;
     const data = dbResult.data;
+    const error = dbResult.error;
+
+    const databaseName = typeof database === 'string' ? database : database?.Database;
+
+    if (error) {
+      errors.push({database, error});
+      continue;
+    }
+
+    if (checkEmpty(dbResult)) {
+      if (includeEmpty) {
+        allData.push({ database });
+      }
+      continue;
+    }
 
     let sheetData: unknown[] = [];
-      if (Array.isArray(data)) {
-        sheetData = data.map(item => ({ database, ...item }));
-      } else if (data && typeof data === 'object') {
-        sheetData = [{ database, ...data }];
-      } else {
-        sheetData = [{ database, value: data }];
-      }
+    if (Array.isArray(data)) {
+      sheetData = data.map(item => ({ database, ...item }));
+    } else if (data && typeof data === 'object') {
+      sheetData = [{ database, ...data }];
+    } else {
+      sheetData = [{ database, value: data }];
+    }
 
-      // Track the start row for this database group
-      databaseGroups[database] ??= { startRow: currentRow, endRow: currentRow };
+    // Track the start row for this database group
+    databaseGroups[databaseName] ??= { startRow: currentRow, endRow: currentRow };
 
-      // Update the end row for this database group
-      databaseGroups[database].endRow = currentRow + sheetData.length - 1;
-      currentRow += sheetData.length;
+    // Update the end row for this database group
+    databaseGroups[databaseName].endRow = currentRow + sheetData.length - 1;
+    currentRow += sheetData.length;
 
-      allData.push(...sheetData);
-  }
-
-  if (allData.length === 0) {
-    return false;
+    allData.push(...sheetData);
   }
 
   const worksheet = XLSX.utils.json_to_sheet(allData);
@@ -80,35 +110,45 @@ async function processCombinedSheet<TData>(
   }
 
   XLSX.utils.book_append_sheet(workbook, worksheet, "Combined");
-  return true;
+  return errors;
 }
 
-export const XlsOutputStrategy = <TData extends []>(unique: boolean = false): OutputStrategy<TData, string> => async (result) => {
-  const workbook = XLSX.utils.book_new();
+export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(): OutputStrategy<T, TData, [ExecutionError<T>[], string]>
+export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(combineSheets: boolean): OutputStrategy<T, TData, [ExecutionError<T>[], string]>
+export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(combineSheets: boolean, includeEmpty: boolean): OutputStrategy<T, TData, [ExecutionError<T>[], string]>
+export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(combineSheets: boolean, includeEmpty: boolean, includeErrors: false): OutputStrategy<T, TData, [ExecutionError<T>[], string]>
+export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(combineSheets: boolean, includeEmpty: boolean, includeErrors: true): OutputStrategy<T, TData, string>
+export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(combineSheets: boolean, includeEmpty: boolean, includeErrors: boolean): OutputStrategy<T, TData, string | [ExecutionError<T>[], string]>
+export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(combineSheets = false, includeEmpty = true, includeErrors = false): OutputStrategy<T, TData, string | [ExecutionError<T>[], string]> {
+  return async (result: ReadableStream<ExecutionResult<T, TData>>): Promise<string | [ExecutionError<T>[], string]> => {
+    const workbook = XLSX.utils.book_new();
+    let errors: ExecutionError<T>[] = [];
 
-  if (unique) {
-    const hasData = await processCombinedSheet(result, workbook);
-    if (!hasData) {
-      const emptyWorksheet = XLSX.utils.json_to_sheet([{ message: "No data available" }]);
-      XLSX.utils.book_append_sheet(workbook, emptyWorksheet, "Empty");
+    if (combineSheets) {
+      errors = await processCombinedSheet(result, workbook, includeEmpty);
+    } else {
+      errors = await processSeparateSheets(result, workbook, includeEmpty);
     }
-  } else {
-    const hasData = await processSeparateSheets(result, workbook);
-    if (!hasData) {
-      const emptyWorksheet = XLSX.utils.json_to_sheet([{ message: "No data available" }]);
-      XLSX.utils.book_append_sheet(workbook, emptyWorksheet, "Empty");
+
+    if (includeErrors) {
+      const errorWorksheet = XLSX.utils.json_to_sheet(errors);
+      XLSX.utils.book_append_sheet(workbook, errorWorksheet, "Errors")
     }
-  }
 
-  let filename = process.argv[1]?.replace(/\.(?:js|ts)/, '');
-  filename = `${filename}-${Date.now()}.xlsx`;
+    let filename = process.argv[1]?.replace(/\.(?:js|ts)/, '');
+    filename = `${filename}-${Date.now()}.xlsx`;
 
-  try {
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
-    await Bun.write(filename, buffer);
-    return filename;
-  } catch (error) {
-    console.error('Error writing Excel file');
-    throw error;
-  }
-};
+    try {
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
+      await Bun.write(filename, buffer);
+
+      if (!includeErrors) {
+        return [errors, filename];
+      }
+      return filename;
+    } catch (error) {
+      console.error('Error writing Excel file');
+      throw error;
+    }
+  };
+}

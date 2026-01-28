@@ -3,38 +3,28 @@ import type { DatabaseConnection } from "../connect/types";
 import { Runner } from '../shared/runner';
 import type { ExecutionError } from '../shared/runner/types';
 
-export const Execute = <TParam>(
-    connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
-    databases$: Promise<string[]>,
-    input: TParam
+export const Execute = <T>(
+    connections$: (databases: T[]) => Generator<DatabaseConnection<T>[]>,
+    databases$: Promise<T[]>
 ) => {
     return async (
-        fn: (transaction: Transaction, database: string, params: TParam) => Promise<void>
-    ): Promise<ExecutionError[]> => {
-        const errors: ExecutionError[] = [];
+        fn: (transaction: Transaction, database: T) => Promise<void>
+    ): Promise<ExecutionError<T>[]> => {
+        const errors: ExecutionError<T>[] = [];
 
-        const [runner, singleBar] = Runner();
+        const [runner, singleBar] = Runner<T>();
 
-        const executeFn = (dc: DatabaseConnection) => runner({
+        const executeFn = (dc: DatabaseConnection<T>) => runner({
             connection: dc,
-            input,
             fn,
-            onError: async (error) => {
-                errors.push({
-                    [dc.database]: {
-                        name: error.name,
-                        message: error.message,
-                        stack: error.stack,
-                        code: (error as any).code || undefined,
-                        number: (error as any).number || undefined,
-                        state: (error as any).state || undefined,
-                        class: (error as any).class || undefined,
-                        serverName: (error as any).serverName || undefined,
-                        procName: (error as any).procName || undefined,
-                        lineNumber: (error as any).lineNumber || undefined
-                    }
-                });
-            }
+            onResult(_, error) {
+                if (error) {
+                    errors.push({
+                        database: dc.database,
+                        error
+                    })
+                }
+            },
         });
 
         const databases = await databases$;
@@ -43,7 +33,7 @@ export const Execute = <TParam>(
             singleBar.start(databases.length, 0);
         }
 
-        for await (const connectionBatch of connections$(databases)) {
+        for (const connectionBatch of connections$(databases)) {
             const executions = connectionBatch.map(executeFn);
             await Promise.allSettled(executions);
         }

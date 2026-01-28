@@ -11,8 +11,8 @@ describe("MergeOutputStrategy", () => {
       }
     });
 
-    const strategy = MergeOutputStrategy<number[]>();
-    const result = await strategy(mockData);
+    const strategy = MergeOutputStrategy<string, number[]>();
+    const [_, result] = await strategy(mockData);
     expect(result).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
@@ -25,8 +25,8 @@ describe("MergeOutputStrategy", () => {
       }
     });
 
-    const strategy = MergeOutputStrategy<number[]>();
-    const result = await strategy(mockData);
+    const strategy = MergeOutputStrategy<string, number[]>();
+    const [_, result] = await strategy(mockData);
     
     expect(result).toEqual([]);
   });
@@ -40,8 +40,8 @@ describe("MergeOutputStrategy", () => {
       }
     });
 
-    const strategy = MergeOutputStrategy<{ id: number; name: string }[]>();
-    const result = await strategy(mockData);
+    const strategy = MergeOutputStrategy<string, { id: number; name: string }[]>();
+    const [_, result] = await strategy(mockData);
     
     expect(result).toEqual([
       { id: 1, name: "Alice" },

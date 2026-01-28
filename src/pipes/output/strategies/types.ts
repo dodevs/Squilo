@@ -1,3 +1,3 @@
-import type { ExecutionData } from "../../shared/runner/types";
+import type { ExecutionResult } from "../../shared/runner/types";
 
-export type OutputStrategy<TReturn, TOutput = void> = (data: ReadableStream<ExecutionData<TReturn>>) => Promise<TOutput>;
+export type OutputStrategy<T, TReturn, TOutput = void> = (data: ReadableStream<ExecutionResult<T, TReturn>>) => Promise<TOutput>;

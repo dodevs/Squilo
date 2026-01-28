@@ -6,7 +6,7 @@ import { CLIENTS_MANAGER_DATABASE, DATABASES, SetupClientManager, SetupDatabases
 import type { DatabaseConnection } from '../src/pipes/connect/types';
 import type { Transaction } from 'mssql';
 
-const mockExecute = mock(<TParam>(connections$: (databases: string[]) => Generator<DatabaseConnection[]>, databases$: Promise<string[]>) => (fn: (transaction: Transaction, database: string, params: TParam) => Promise<void>) => Promise<void>);
+const mockExecute = mock((connections$: (databases: string[]) => Generator<DatabaseConnection<string[]>[]>, databases$: Promise<string[]>) => (fn: (transaction: Transaction, database: string) => Promise<void>) => Promise<void>);
 mock.module('../src/pipes/execute', () => ({
     Execute: mockExecute,
 }))
@@ -119,20 +119,22 @@ describe('Connection overloads', async () => {
     });
 
     test('Connect with query', async () => {
-        LocalServer.Connect({
+        LocalServer.Connect<{Database: string}>({
             database: CLIENTS_MANAGER_DATABASE,
-            query: 'SELECT DatabaseName FROM Clients WHERE Active = 1'
+            query: 'SELECT DatabaseName as [Database] FROM Clients WHERE Active = 1'
         });
 
         expect(mockExecute).toHaveBeenCalledTimes(1);
         const connectionsFn = mockExecute.mock.calls[0]![0];
         const databases$ = mockExecute.mock.calls[0]![1];
         const connectionsGenerator = connectionsFn(await databases$);
-        const connections = await connectionsGenerator.next();
+        const connections = connectionsGenerator.next();
         expect(connections.done).toBe(false);
         expect(connections.value).toHaveLength(5);
         expect(connections.value).toEqual(DATABASES.map(database => ({
-            database,
+            database: {
+                Database: database,
+            },
             connection: expect.any(Promise),
         })));
     })

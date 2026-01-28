@@ -4,30 +4,23 @@ import { Transform } from "../transform"
 import type { DatabaseConnection } from "../connect/types";
 import type { RetrieveChain } from "./types";
 import { Runner } from "../shared/runner";
-import type { ExecutionData, ExecutionError } from "../shared/runner/types";
+import type { ExecutionResult } from "../shared/runner/types";
 
-export const Retrieve = <TParam>(
-    connections$: (databases: string[]) => Generator<DatabaseConnection[]>,
-    databases$: Promise<string[]>,
-    input: TParam
+export const Retrieve = <T>(
+    connections$: (databases: T[]) => Generator<DatabaseConnection<T>[]>,
+    databases$: Promise<T[]>
 ) => {
-    return <TReturn>(fn: (transaction: Transaction, database: string, params: TParam) => Promise<TReturn>): RetrieveChain<TReturn> => {
-        const { readable: readableData, writable: writableData } = new TransformStream<ExecutionData<TReturn>, ExecutionData<TReturn>>();
-        const { readable: readableError, writable: writableError } = new TransformStream<ExecutionError, ExecutionError>();
-        const dataWriter = writableData.getWriter();
-        const errorWriter = writableError.getWriter();
+    return <TReturn>(fn: (transaction: Transaction, database: T) => Promise<TReturn>): RetrieveChain<T, TReturn> => {
+        const { readable: readableResult, writable: writableResult } = new TransformStream<ExecutionResult<T, TReturn>, ExecutionResult<T, TReturn>>();
+        const resultWriter = writableResult.getWriter();
 
-        const [runner, singleBar] = Runner();
+        const [runner, singleBar] = Runner<T>();
 
-        const executeFn = (dc: DatabaseConnection) => runner({
+        const executeFn = (dc: DatabaseConnection<T>) => runner({
             connection: dc,
-            input,
             fn,
-            onSuccess: async (result) => {
-                await dataWriter.write({ database: dc.database, data: result });
-            },
-            onError: async (error) => {
-                await errorWriter.write({ [dc.database]: error });
+            onResult: async (data, error) => {
+                await resultWriter.write({ database: dc.database, data: data, error: error });
             }
         });
 
@@ -39,7 +32,7 @@ export const Retrieve = <TParam>(
                 singleBar.start(databases.length, 0);
             }
 
-            for await (const connectionBatch of connections$(databases)) {
+            for (const connectionBatch of connections$(databases)) {
                 const executions = connectionBatch.map(executeFn);
                 await Promise.allSettled(executions);
             }
@@ -48,13 +41,12 @@ export const Retrieve = <TParam>(
                 singleBar.stop();
             }
 
-            await dataWriter.close();
-            await errorWriter.close();
+            await resultWriter.close().catch(() => {});
         })();
 
         return {
-            Transform: Transform(readableData, readableError),
-            Output: Output(readableData, readableError)
+            Transform: Transform(readableResult),
+            Output: Output(readableResult)
         };
     }
 }

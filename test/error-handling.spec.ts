@@ -22,7 +22,7 @@ describe("Error handling and logging tests", async () => {
 
   beforeAll(async () => {
     await SetupDatabases(container);
-    await SetupUsers(container, { populate: false });
+    await SetupUsers(container, { populate: false, quantity: 10 });
 
     originalSafeGuard = process.env.SAFE_GUARD;
   });

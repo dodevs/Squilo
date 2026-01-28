@@ -19,7 +19,7 @@ describe("XlsOutputStrategy", () => {
     });
 
     const strategy = XlsOutputStrategy(false);
-    const filename = await strategy(mockData);
+    const [_, filename] = await strategy(mockData);
 
     const file = Bun.file(filename);
 
@@ -48,7 +48,7 @@ describe("XlsOutputStrategy", () => {
     });
 
     const strategy = XlsOutputStrategy(true);
-    const filename = await strategy(mockData);
+    const [_, filename] = await strategy(mockData);
 
     const file = Bun.file(filename);
 
@@ -70,7 +70,7 @@ describe("XlsOutputStrategy", () => {
     });
 
     const strategy = XlsOutputStrategy(false);
-    const filename = await strategy(mockData);
+    const [_, filename] = await strategy(mockData);
 
     expect(await Bun.file(filename).exists()).toBe(true);
 
@@ -94,7 +94,7 @@ describe("XlsOutputStrategy", () => {
     });
 
     const strategy = XlsOutputStrategy(true);
-    const filename = await strategy(mockData);
+    const [_, filename] = await strategy(mockData);
 
     const file = Bun.file(filename);
 

@@ -1,17 +1,16 @@
-import type { ExecutionData, ExecutionError } from "../shared/runner/types";
+import type { ExecutionData, ExecutionResult } from "../shared/runner/types";
 import type { TransformChain, TransformFunction } from "./types";
 import { Output } from "../output";
 
-export const Transform = <TInput>(
-    data: ReadableStream<ExecutionData<TInput>>,
-    error: ReadableStream<ExecutionError>
+export const Transform = <T, TInput>(
+    result: ReadableStream<ExecutionResult<T, TInput>>
 ) => {
-    return <TOutput>(transformFn: TransformFunction<TInput, TOutput>): TransformChain<TInput, TOutput> => {
-        class TransformDataStream extends TransformStream<ExecutionData<TInput>, ExecutionData<TOutput>> {
+    return <TOutput>(transformFn: TransformFunction<TInput, TOutput>): TransformChain<T, TOutput> => {
+        class TransformDataStream extends TransformStream<ExecutionData<T, TInput>, ExecutionData<T, TOutput>> {
             constructor() {
                 super({
                     async transform(chunk, controller) {
-                        const transformedData: ExecutionData<TOutput> = {
+                        const transformedData: ExecutionData<T, TOutput> = {
                             database: chunk.database,
                             data: await transformFn(chunk.data)
                         };
@@ -21,10 +20,10 @@ export const Transform = <TInput>(
             }
         }
         
-        const transformedData = data.pipeThrough(new TransformDataStream());
+        const transformedData = result.pipeThrough(new TransformDataStream());
 
         return {
-            Output: Output(transformedData, error)
+            Output: Output(transformedData)
         };
     }
 }

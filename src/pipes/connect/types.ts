@@ -2,24 +2,21 @@ import type { ConnectionPool, Transaction } from "mssql";
 import type { RetrieveChain } from "../retrieve/types";
 import type { ExecutionError } from "../shared/runner/types";
 
-
-export type ConnectOverloads = {
-    (database: string): ConnectionChain;
-    (databases: string[], concurrent?: number): ConnectionChain;
-    (options: ConnectionOptions, concurrent?: number): ConnectionChain;
+export type DatabaseObject = object & {
+    Database: string;
 }
 
 export type ConnectionOptions = {
     database: string;
-    query: `SELECT${string}FROM${string}`;
+    query: `SELECT ${string}[Database]${string} FROM ${string}`;
 }
 
-export type DatabaseConnection = {
-    database: string;
+export type DatabaseConnection<T> = {
+    database: T;
     connection: Promise<ConnectionPool>;
 }
 
-export type ConnectionChain = {
-    Execute(fn: (transaction: Transaction, database: string) => Promise<void>): Promise<ExecutionError[]>;
-    Retrieve<TResult>(fn: (transaction: Transaction, database: string) => Promise<TResult>): RetrieveChain<TResult>;
+export type ConnectionChain<T> = {
+    Execute(fn: (transaction: Transaction, database: T) => Promise<void>): Promise<ExecutionError<T>[]>;
+    Retrieve<TResult>(fn: (transaction: Transaction, database: T) => Promise<TResult>): RetrieveChain<T, TResult>;
 }
