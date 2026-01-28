@@ -12,8 +12,10 @@ export type User = {
 
 export const SetupUsers = async (container: StartedTestContainer, options: {
   populate: boolean;
+  quantity: number;
 } = { 
-  populate: true 
+  populate: true,
+  quantity: 10
 }): Promise<void> => {
   for (const database of DATABASES) {
     const conn = await connect({
@@ -30,6 +32,16 @@ export const SetupUsers = async (container: StartedTestContainer, options: {
           Email NVARCHAR(100) NOT NULL
         );
       END
+
+      IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Users_Name' AND object_id = OBJECT_ID('Users'))
+      BEGIN
+        CREATE INDEX IX_Users_Name ON Users (Name);
+      END
+
+      IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Users_Email' AND object_id = OBJECT_ID('Users'))
+      BEGIN
+        CREATE INDEX IX_Users_Email ON Users (Email);
+      END
     `;
 
     if (options.populate) {
@@ -38,10 +50,12 @@ export const SetupUsers = async (container: StartedTestContainer, options: {
       const usersTable = new Table("Users");
       usersTable.columns.add("Name", NVarChar(100), { nullable: false });
       usersTable.columns.add("Email", NVarChar(100), { nullable: false });
+
+      faker.seed(123);
     
-      for (let i = 0; i < 10; i++) {
-        const name = faker.person.fullName({ firstName: "Joe"});
-        const email = faker.internet.email({ firstName: "Joe" }) + " ";
+      for (let i = 0; i < options.quantity; i++) {
+        const name = faker.person.fullName();
+        const email = faker.internet.email();
 
         usersTable.rows.add(name, email);
       }
