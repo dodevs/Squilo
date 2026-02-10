@@ -9,31 +9,32 @@ export const Connect = (pool: Pool) => <T extends string | DatabaseObject>(param
     let databases$: Promise<T[]>;
 
     function connections(concurrent: number = Number.MAX_VALUE): (databases: T[]) => Generator<DatabaseConnection<T>[]> {
+        const safe_guard = LoadEnv().SAFE_GUARD;
+
+        const mapDatabase = (database: T) => ({
+            database,
+            connection: pool.connect({ database: typeof database === 'string' ? database : database.Database })
+        });
+
         return function* (databases: T[]) {
-            const _databases = [...databases];
-            const safe_guard = LoadEnv().SAFE_GUARD;
+            let i = 0;
+            const len = databases.length;
+            const firstChunkLimit = Math.min(len, concurrent);
+            const safeguardLimit = Math.min(firstChunkLimit, safe_guard || 0);
 
-            if (safe_guard > 0) {
-                const guard_test = _databases.splice(0, safe_guard);
-
-                for (const database of guard_test) {
-                    yield [{
-                        database,
-                        connection: pool.connect({ database: typeof database === 'string' ? database : database.Database }) 
-                    }];
-                }
+            while (i < safeguardLimit) {
+                yield [mapDatabase(databases[i++] as T)];
             }
 
-            const databases_result_chunks = Array.from(
-                { length: Math.ceil(_databases.length / concurrent) },
-                (_, i) => _databases.slice(i * concurrent, (i + 1) * concurrent)
-            );
+            if (i < firstChunkLimit) {
+                yield databases.slice(i, firstChunkLimit).map(mapDatabase);
+                i = firstChunkLimit;
+            }
 
-            for (const databases_result_chunk of databases_result_chunks) {
-                yield databases_result_chunk.map(database => ({
-                    database,
-                    connection: pool.connect({ database: typeof database === 'string' ? database : database.Database })
-                }));
+            while (i < len) {
+                const end = Math.min(i + concurrent, len);
+                yield databases.slice(i, end).map(mapDatabase);
+                i = end;
             }
         }
     }
