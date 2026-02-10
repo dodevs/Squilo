@@ -28,7 +28,7 @@ async function processSeparateSheets<T extends string | DatabaseObject, TData>(
     if (checkEmpty(dbResult)) {
       if (includeEmpty) {
         const emptyWorksheet = XLSX.utils.json_to_sheet([{ database: databaseName, message: "No data available" }]);
-        XLSX.utils.book_append_sheet(workbook, emptyWorksheet, databaseName);
+        XLSX.utils.book_append_sheet(workbook, emptyWorksheet, databaseName.slice(0, 31));
       }
       continue;
     }
@@ -43,7 +43,7 @@ async function processSeparateSheets<T extends string | DatabaseObject, TData>(
     }
 
     const worksheet = XLSX.utils.json_to_sheet(sheetData);
-    XLSX.utils.book_append_sheet(workbook, worksheet, databaseName);
+    XLSX.utils.book_append_sheet(workbook, worksheet, databaseName.slice(0, 31));
   }
 
   return errors;
