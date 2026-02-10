@@ -1,21 +1,5 @@
 import { type config, ConnectionPool, Transaction } from 'mssql';
 
-// export class TransactionWrapper {
-//     constructor(private readonly transaction: Transaction) {}
-
-//     #isCommitted: boolean = false;
-//     public commit(): Promise<void> {
-//         this.#isCommitted = true;
-//         return this.transaction.commit();
-//     }
-
-//     async [Symbol.asyncDispose](): Promise<void> {
-//         if (!this.#isCommitted) {
-//             return await this.transaction.rollback();
-//         }
-//     }
-// }
-
 export interface TransactionWrapper extends Transaction, AsyncDisposable {
     commit$: () => Promise<void>;
 }
