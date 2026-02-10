@@ -52,7 +52,7 @@ export const Runner = <T extends string | DatabaseObject>(): [TransactionRunner<
             .then(result => onResult(result))
             .then(() => {
                 if (singleBar && Bun.env.NODE_ENV !== 'test') {
-                    singleBar.increment(1, { database: dc.database });
+                    singleBar.increment(1, { database: databaseName });
                 }
             })
             .catch(error => {
