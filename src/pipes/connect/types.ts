@@ -18,6 +18,6 @@ export type DatabaseConnection<T> = {
 }
 
 export type ConnectionChain<T> = {
-    Execute(fn: (connection: ConnectionPoolWrapper) => Promise<void>): Promise<ExecutionError<T>[]>;
-    Retrieve<TResult>(fn: (connection: ConnectionPoolWrapper) => Promise<TResult>): RetrieveChain<T, TResult>;
+    Execute(fn: (connection: ConnectionPoolWrapper, database: T) => Promise<void>): Promise<ExecutionError<T>[]>;
+    Retrieve<TResult>(fn: (connection: ConnectionPoolWrapper, database: T) => Promise<TResult>): RetrieveChain<T, TResult>;
 }
