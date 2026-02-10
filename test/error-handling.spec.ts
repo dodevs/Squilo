@@ -28,8 +28,6 @@ describe("Error handling and logging tests", async () => {
   });
 
   afterAll(async () => {
-    await localServer.Close();
-
     if (originalSafeGuard !== undefined) {
       process.env.SAFE_GUARD = originalSafeGuard;
     } else {
@@ -63,8 +61,8 @@ describe("Error handling and logging tests", async () => {
 
       const [errors, result] = await localServer
         .Connect(DATABASES)
-        .Retrieve(async (transaction) => {
-          const result = await transaction.request().query`SELECT * FROM NonExistentTable`;
+        .Retrieve(async (conn) => {
+          const result = await conn.query`SELECT * FROM NonExistentTable`;
           return result.recordset;
         })
         .Output(MergeOutputStrategy());
@@ -80,8 +78,8 @@ describe("Error handling and logging tests", async () => {
 
       const errors = await localServer
         .Connect(DATABASES)
-        .Execute(async (transaction) => {
-          await transaction.request().query`
+        .Execute(async (conn) => {
+          await conn.query`
             INSERT INTO NonExistentTable (Id, Name, Email) VALUES (1, 'John Doe', 'john.doe@test.com')
           `;
         });

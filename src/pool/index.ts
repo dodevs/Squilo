@@ -1,11 +1,67 @@
-import { type config, ConnectionPool } from 'mssql';
+import { type config, ConnectionPool, Transaction } from 'mssql';
+
+// export class TransactionWrapper {
+//     constructor(private readonly transaction: Transaction) {}
+
+//     #isCommitted: boolean = false;
+//     public commit(): Promise<void> {
+//         this.#isCommitted = true;
+//         return this.transaction.commit();
+//     }
+
+//     async [Symbol.asyncDispose](): Promise<void> {
+//         if (!this.#isCommitted) {
+//             return await this.transaction.rollback();
+//         }
+//     }
+// }
+
+export interface TransactionWrapper extends Transaction, AsyncDisposable {
+    commit$: () => Promise<void>;
+}
+
+export const TransactionWrapper = function(this: TransactionWrapper, transaction: Transaction) {
+    Object.setPrototypeOf(this, Object.getPrototypeOf(transaction));
+    Object.assign(this, transaction);
+    
+    let committed: boolean = false;
+
+    this.commit$ = async function() {
+        committed = true;
+        return await this.commit();
+    };
+
+    this[Symbol.asyncDispose] = async function() {
+        if (!committed) {
+            return await this.rollback();
+        }
+    };
+} as unknown as new (transaction: Transaction) => TransactionWrapper & Transaction;
+
+export interface ConnectionPoolWrapper extends ConnectionPool, AsyncDisposable {
+    transaction$: () => Promise<TransactionWrapper>;
+}
+
+export const ConnectionPoolWrapper = function(this: ConnectionPoolWrapper, conn: ConnectionPool) {
+    Object.setPrototypeOf(this, Object.getPrototypeOf(conn));
+    Object.assign(this, conn);
+
+    this.transaction$ = async function() {
+        const transaction = await this.transaction().begin();
+        return new TransactionWrapper(transaction);
+    };
+
+    this[Symbol.asyncDispose] = async function() {
+        return await this.close();
+    };
+} as unknown as new (conn: ConnectionPool) => ConnectionPoolWrapper & ConnectionPool;
+
 export type Pool = {
-    connect: (partialConfig: Partial<config>) => Promise<ConnectionPool>;
-    closeAll: () => Promise<void>;
+    connect: (partialConfig: Partial<config>) => () => Promise<ConnectionPool>;
 }
 
 export function Pool(poolConfig: config): Pool {
-    const POOL: Record<string, Promise<ConnectionPool>> = {};
+    const POOL: Record<string, () => Promise<ConnectionPool>> = {};
 
     return {
         connect: (partialConfig: Partial<config>) => {
@@ -30,8 +86,9 @@ export function Pool(poolConfig: config): Pool {
                     throw err;
                 });
 
-                POOL[database] = pool
+                POOL[database] = () => pool
                     .connect()
+                    .then(() => pool)
                     .catch(err => {
                         delete POOL[database];
                         throw err;
@@ -40,10 +97,5 @@ export function Pool(poolConfig: config): Pool {
 
             return POOL[database]!;
         },
-        closeAll: async () => {
-            const closes = Object.values(POOL).map(pool => pool.then(p => p.close()));
-            await Promise.all(closes);
-        }
-
     }
 }

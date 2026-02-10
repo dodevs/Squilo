@@ -1,16 +1,17 @@
-import type { Transaction } from "mssql";
+import type { ConnectionPool, Transaction } from "mssql";
 import { Output } from "../output"
 import { Transform } from "../transform"
-import type { DatabaseConnection } from "../connect/types";
+import type { DatabaseConnection, DatabaseObject } from "../connect/types";
 import type { RetrieveChain } from "./types";
 import { Runner } from "../shared/runner";
 import type { ExecutionResult } from "../shared/runner/types";
+import type { ConnectionPoolWrapper } from "../../pool";
 
-export const Retrieve = <T>(
+export const Retrieve = <T extends string | DatabaseObject>(
     connections$: (databases: T[]) => Generator<DatabaseConnection<T>[]>,
     databases$: Promise<T[]>
 ) => {
-    return <TReturn>(fn: (transaction: Transaction, database: T) => Promise<TReturn>): RetrieveChain<T, TReturn> => {
+    return <TReturn>(fn: (conn: ConnectionPoolWrapper, database: T) => Promise<TReturn>): RetrieveChain<T, TReturn> => {
         const { readable: readableResult, writable: writableResult } = new TransformStream<ExecutionResult<T, TReturn>, ExecutionResult<T, TReturn>>();
         const resultWriter = writableResult.getWriter();
 

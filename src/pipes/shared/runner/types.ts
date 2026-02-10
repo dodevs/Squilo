@@ -1,11 +1,12 @@
-import type { ConnectionError, TransactionError, RequestError, PreparedStatementError, Transaction } from "mssql";
+import type { ConnectionError, TransactionError, RequestError, PreparedStatementError, Transaction, ConnectionPool } from "mssql";
 import type { DatabaseConnection } from "../../connect/types";
+import type { ConnectionPoolWrapper } from "../../../pool";
 
 export type ErrorType = Error | ConnectionError | TransactionError | RequestError | PreparedStatementError;
 
 export interface RunnerOptions<T, TReturn> {
     connection: DatabaseConnection<T>;
-    fn: (transaction: Transaction, database: T) => Promise<TReturn>;
+    fn: (connection: ConnectionPoolWrapper, database: T) => Promise<TReturn>;
     onResult?: (data?: TReturn, error?: ErrorType) => Promise<void> | void
 }
 

@@ -9,7 +9,6 @@ export const Auth = (config: ServerConfig) => (strategy: AuthStrategy): Authenti
     const pool = Pool(configWithAuth);
 
     return {
-        Connect: Connect(pool),
-        Close: () => pool.closeAll(),
+        Connect: Connect(pool)
     }
 }

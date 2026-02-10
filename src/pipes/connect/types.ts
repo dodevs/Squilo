@@ -1,6 +1,7 @@
-import type { ConnectionPool, Transaction } from "mssql";
 import type { RetrieveChain } from "../retrieve/types";
 import type { ExecutionError } from "../shared/runner/types";
+import type { ConnectionPoolWrapper } from "../../pool";
+import type { ConnectionPool } from "mssql";
 
 export type DatabaseObject = object & {
     Database: string;
@@ -13,10 +14,10 @@ export type ConnectionOptions = {
 
 export type DatabaseConnection<T> = {
     database: T;
-    connection: Promise<ConnectionPool>;
+    connection: () => Promise<ConnectionPool>;
 }
 
 export type ConnectionChain<T> = {
-    Execute(fn: (transaction: Transaction, database: T) => Promise<void>): Promise<ExecutionError<T>[]>;
-    Retrieve<TResult>(fn: (transaction: Transaction, database: T) => Promise<TResult>): RetrieveChain<T, TResult>;
+    Execute(fn: (connection: ConnectionPoolWrapper) => Promise<void>): Promise<ExecutionError<T>[]>;
+    Retrieve<TResult>(fn: (connection: ConnectionPoolWrapper) => Promise<TResult>): RetrieveChain<T, TResult>;
 }

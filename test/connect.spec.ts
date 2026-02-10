@@ -30,8 +30,6 @@ describe('Connection overloads', async () => {
     });
 
     afterAll(async () => {
-        await LocalServer.Close();
-
         if (originalSafeGuard) {
             process.env.SAFE_GUARD = originalSafeGuard;
         } else {
@@ -58,7 +56,7 @@ describe('Connection overloads', async () => {
         expect(uniqueConnection.value).toHaveLength(1);
         expect(uniqueConnection.value).toEqual([{
             database,
-            connection: expect.any(Promise),
+            connection: expect.any(Function),
         }]);
     });
 
@@ -76,10 +74,10 @@ describe('Connection overloads', async () => {
         expect(connections.value).toHaveLength(2);
         expect(connections.value).toEqual([{
             database: DATABASES[0]!,
-            connection: expect.any(Promise),
+            connection: expect.any(Function),
         }, {
             database: DATABASES[1]!,
-            connection: expect.any(Promise),
+            connection: expect.any(Function),
         }]);
     });
 
@@ -96,22 +94,22 @@ describe('Connection overloads', async () => {
         expect(firstConnections.done).toBe(false);
         expect(firstConnections.value).toHaveLength(2);
         expect(firstConnections.value).toEqual([{
-            database: DATABASES[0],
-            connection: expect.any(Promise),
+            database: DATABASES[0]!,
+            connection: expect.any(Function),
         }, {
-            database: DATABASES[1],
-            connection: expect.any(Promise),
+            database: DATABASES[1]!,
+            connection: expect.any(Function),
         }]);
 
         const secondConnections = connectionsGenerator.next();
         expect(secondConnections.done).toBe(false);
         expect(secondConnections.value).toHaveLength(2);
         expect(secondConnections.value).toEqual([{
-            database: DATABASES[2],
-            connection: expect.any(Promise),
+            database: DATABASES[2]!,
+            connection: expect.any(Function),
         }, {
-            database: DATABASES[3],
-            connection: expect.any(Promise),
+            database: DATABASES[3]!,
+            connection: expect.any(Function),
         }]);
 
         const thirdConnections = connectionsGenerator.next();
@@ -135,7 +133,7 @@ describe('Connection overloads', async () => {
             database: {
                 Database: database,
             },
-            connection: expect.any(Promise),
+            connection: expect.any(Function),
         })));
     })
 })

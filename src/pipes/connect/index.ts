@@ -19,7 +19,7 @@ export const Connect = (pool: Pool) => <T extends string | DatabaseObject>(param
                 for (const database of guard_test) {
                     yield [{
                         database,
-                        connection: pool.connect({ database: typeof database === 'string' ? database : database.Database })
+                        connection: pool.connect({ database: typeof database === 'string' ? database : database.Database }) 
                     }];
                 }
             }
@@ -48,7 +48,7 @@ export const Connect = (pool: Pool) => <T extends string | DatabaseObject>(param
 
     else if (typeof param === 'object' && 'query' in param) {
         databases$ = pool
-            .connect({ database: param.database })
+            .connect({ database: param.database })()
             .then(conn => conn
                 .request()
                 .query<T[]>(param.query)

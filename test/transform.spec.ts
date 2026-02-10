@@ -23,19 +23,20 @@ describe('Transform pipe test', async () => {
     await SetupUsers(container);
   })
 
-  afterAll(async () => {
-    await LocalServer.Close();
-  })
-
   it("Should transform user data to uppercase emails", async () => {
     const [, transformedUsers] = await LocalServer
       .Connect(DATABASES)
-      .Retrieve(async (transaction) => {
-        const result = await transaction.request().query<User>`
+      .Retrieve(async (conn) => {
+        try {
+          const result = await conn.query<User>`
             SELECT TOP 2 * FROM Users
-        `;
+          `;
 
-        return result.recordset;
+          return result.recordset;
+        } catch (error) {
+          console.error("Error querying users:", error);
+          return [];
+        }
       })
       .Transform((users) => {
         // Transform function that converts emails to uppercase
@@ -53,8 +54,8 @@ describe('Transform pipe test', async () => {
   it("Should transform single values", async () => {
     const [, userCount] = await LocalServer
       .Connect(DATABASES)
-      .Retrieve(async (transaction) => {
-        const result = await transaction.request().query<{ count: number }>`
+      .Retrieve(async (conn) => {
+        const result = await conn.query<{ count: number }>`
             SELECT COUNT(*) as count FROM Users
         `;
 
@@ -73,8 +74,8 @@ describe('Transform pipe test', async () => {
   it("Should add new property to user data", async () => {
     const [, transformedUsers] = await LocalServer
       .Connect(DATABASES)
-      .Retrieve(async (transaction) => {
-        const result = await transaction.request().query<User>`
+      .Retrieve(async (conn) => {
+        const result = await conn.query<User>`
             SELECT TOP 2 * FROM Users
         `;
 
@@ -96,8 +97,8 @@ describe('Transform pipe test', async () => {
   it("Should work with async transform", async () => {
     const [, transformedUsers] = await LocalServer
       .Connect(DATABASES)
-      .Retrieve(async (transaction) => {
-        const result = await transaction.request().query<User>`
+      .Retrieve(async (conn) => {
+        const result = await conn.query<User>`
             SELECT TOP 2 * FROM Users
         `;
 
@@ -120,8 +121,8 @@ describe('Transform pipe test', async () => {
   it("Should work without Transform (existing functionality)", async () => {
     const [, users] = await LocalServer
       .Connect(DATABASES)
-      .Retrieve(async (transaction) => {
-        const result = await transaction.request().query<User>`
+      .Retrieve(async (conn) => {
+        const result = await conn.query<User>`
             SELECT TOP 1 * FROM Users
         `;
 

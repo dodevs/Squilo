@@ -1,14 +1,14 @@
-import type { Transaction } from 'mssql';
-import type { DatabaseConnection } from "../connect/types";
+import type { DatabaseConnection, DatabaseObject } from "../connect/types";
 import { Runner } from '../shared/runner';
 import type { ExecutionError } from '../shared/runner/types';
+import type { ConnectionPoolWrapper } from '../../pool';
 
-export const Execute = <T>(
+export const Execute = <T extends string | DatabaseObject>(
     connections$: (databases: T[]) => Generator<DatabaseConnection<T>[]>,
     databases$: Promise<T[]>
 ) => {
     return async (
-        fn: (transaction: Transaction, database: T) => Promise<void>
+        fn: (conn: ConnectionPoolWrapper, database: T) => Promise<void>
     ): Promise<ExecutionError<T>[]> => {
         const errors: ExecutionError<T>[] = [];
 

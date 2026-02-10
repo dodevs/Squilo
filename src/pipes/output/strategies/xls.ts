@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { OutputStrategy } from './types';
-import type { ExecutionError, ExecutionResult } from '../../shared/runner/types';
+import type { ErrorType, ExecutionError, ExecutionResult } from '../../shared/runner/types';
 import type { DatabaseObject } from '../../connect/types';
 
 const checkEmpty = <T, TData>({ data }: ExecutionResult<T, TData>) =>
@@ -18,6 +18,8 @@ async function processSeparateSheets<T extends string | DatabaseObject, TData>(
     const data = dbResult.data;
     const error = dbResult.error;
 
+    const databaseName = typeof database === 'string' ? database : database?.Database;
+
     if (error) {
       errors.push({database, error});
       continue;
@@ -25,8 +27,8 @@ async function processSeparateSheets<T extends string | DatabaseObject, TData>(
 
     if (checkEmpty(dbResult)) {
       if (includeEmpty) {
-        const emptyWorksheet = XLSX.utils.json_to_sheet([{ database, message: "No data available" }]);
-        XLSX.utils.book_append_sheet(workbook, emptyWorksheet, typeof database === 'string' ? database : database?.Database);
+        const emptyWorksheet = XLSX.utils.json_to_sheet([{ database: databaseName, message: "No data available" }]);
+        XLSX.utils.book_append_sheet(workbook, emptyWorksheet, databaseName);
       }
       continue;
     }
@@ -41,7 +43,7 @@ async function processSeparateSheets<T extends string | DatabaseObject, TData>(
     }
 
     const worksheet = XLSX.utils.json_to_sheet(sheetData);
-    XLSX.utils.book_append_sheet(workbook, worksheet, typeof database === 'string' ? database : database?.Database);
+    XLSX.utils.book_append_sheet(workbook, worksheet, databaseName);
   }
 
   return errors;
@@ -79,11 +81,11 @@ async function processCombinedSheet<T extends string | DatabaseObject, TData>(
 
     let sheetData: unknown[] = [];
     if (Array.isArray(data)) {
-      sheetData = data.map(item => ({ database, ...item }));
+      sheetData = data.map(item => ({ database: databaseName, ...item }));
     } else if (data && typeof data === 'object') {
-      sheetData = [{ database, ...data }];
+      sheetData = [{ database: databaseName, ...data }];
     } else {
-      sheetData = [{ database, value: data }];
+      sheetData = [{ database: databaseName, value: data }];
     }
 
     // Track the start row for this database group
@@ -113,6 +115,13 @@ async function processCombinedSheet<T extends string | DatabaseObject, TData>(
   return errors;
 }
 
+function flattenErrors<T extends string | DatabaseObject>(errors: ExecutionError<T>[]): ({ database: string } & ErrorType)[] {
+  return errors.map(error => {
+    const databaseName = typeof error.database === 'string' ? error.database : error.database?.Database;
+    return { database: databaseName, ...error.error };
+  })
+}
+
 export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(): OutputStrategy<T, TData, [ExecutionError<T>[], string]>
 export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(combineSheets: boolean): OutputStrategy<T, TData, [ExecutionError<T>[], string]>
 export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(combineSheets: boolean, includeEmpty: boolean): OutputStrategy<T, TData, [ExecutionError<T>[], string]>
@@ -131,7 +140,7 @@ export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(comb
     }
 
     if (includeErrors) {
-      const errorWorksheet = XLSX.utils.json_to_sheet(errors);
+      const errorWorksheet = XLSX.utils.json_to_sheet(flattenErrors(errors));
       XLSX.utils.book_append_sheet(workbook, errorWorksheet, "Errors")
     }
 
@@ -139,8 +148,10 @@ export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(comb
     filename = `${filename}-${Date.now()}.xlsx`;
 
     try {
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
-      await Bun.write(filename, buffer);
+      if (workbook.SheetNames.length) {
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
+        await Bun.write(filename, buffer);
+      }
 
       if (!includeErrors) {
         return [errors, filename];

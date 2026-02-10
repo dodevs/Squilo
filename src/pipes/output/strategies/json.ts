@@ -14,7 +14,7 @@ function GetProcessingStream<T, TData>(includeEmpty: boolean, includeErrors: boo
             return;
           }
 
-          if (!includeEmpty && checkEmpty(chunk)) {
+          if (!chunk.error && !includeEmpty && checkEmpty(chunk)) {
             return;
           }
 
@@ -49,7 +49,7 @@ export function JsonOutputStrategy<T, TData>(includeEmpty = true, includeErrors 
         if (!first) {
           writer.write(',\n');
         }
-        writer.write(`${JSON.stringify(chunk)}`);
+        writer.write(`${JSON.stringify(chunk, null, 2)}`);
         first = false;
       }
       writer.write(']');

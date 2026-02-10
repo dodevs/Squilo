@@ -23,16 +23,12 @@ describe('Squilo test', async () => {
     await SetupUsers(container);
   })
 
-  afterAll(async () => {
-    await LocalServer.Close();
-  })
-
   it("Get one from each database", async () => {
 
     const [, users] = await LocalServer
       .Connect(DATABASES)
-      .Retrieve(async (transaction) => {
-        const result = await transaction.request().query<User>`
+      .Retrieve(async (conn) => {
+        const result = await conn.query<User>`
             SELECT TOP 1 * FROM Users
         `;
 
@@ -46,16 +42,16 @@ describe('Squilo test', async () => {
   test('Should fix user\'s email that are ending with extra space', async () => {
     await LocalServer
       .Connect(DATABASES)
-      .Execute(async (transaction) => {
-        await transaction.request().query`
+      .Execute(async (conn) => {
+        await conn.query`
             UPDATE Users SET Email = RTRIM(Email)
-          `;
+        `;
       })
 
     const [, users] = await LocalServer
       .Connect(DATABASES)
-      .Retrieve(async (transaction) => {
-        const result = await transaction.request().query<User>`
+      .Retrieve(async (conn) => {
+        const result = await conn.query<User>`
             SELECT * FROM Users
           `;
 
