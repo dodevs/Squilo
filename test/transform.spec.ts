@@ -27,16 +27,11 @@ describe('Transform pipe test', async () => {
     const [, transformedUsers] = await LocalServer
       .Connect(DATABASES)
       .Retrieve(async (conn) => {
-        try {
-          const result = await conn.query<User>`
-            SELECT TOP 2 * FROM Users
-          `;
+        const result = await conn.query<User>`
+          SELECT TOP 2 * FROM Users
+        `;
 
-          return result.recordset;
-        } catch (error) {
-          console.error("Error querying users:", error);
-          return [];
-        }
+        return result.recordset;
       })
       .Transform((users) => {
         // Transform function that converts emails to uppercase
