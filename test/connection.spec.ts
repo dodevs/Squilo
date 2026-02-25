@@ -40,7 +40,7 @@ describe('ConnectionPoolWrapper and TransactionWrapper', async () => {
         expect(wrapped).toBeDefined();
         expect(isClosed).toBe(false);
         // Verify we can run a query
-        const result = await wrapped.request().query('SELECT 1 as one');
+        const result = await wrapped.query('SELECT 1 as one');
         expect(result.recordset[0].one).toBe(1);
     }
 
