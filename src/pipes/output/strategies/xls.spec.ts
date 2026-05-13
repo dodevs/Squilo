@@ -64,7 +64,10 @@ describe("XlsOutputStrategy", () => {
   test("should create empty sheet when no data provided", async () => {
     const mockData = new ReadableStream({
       start(controller) {
-        controller.enqueue({});
+        controller.enqueue({
+          database: "database1",
+          data: []
+        });
         controller.close();
       }
     });
