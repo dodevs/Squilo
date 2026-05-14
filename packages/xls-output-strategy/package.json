@@ -1,0 +1,44 @@
+{
+	"name": "@squilo/xls-output-strategy",
+	"version": "0.7.0-beta.1",
+	"description": "Excel (.xlsx) output strategy for Squilo data pipelines with separate or combined sheets",
+	"keywords": ["excel", "xlsx", "spreadsheet", "export", "sql-server", "bun", "squilo"],
+	"type": "module",
+	"files": [
+		"dist"
+	],
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/dodevs/Squilo.git"
+	},
+	"author": {
+		"name": "Douglas da Silva Sousa",
+		"email": "douglass.sousa@outlook.com.br"
+	},
+	"scripts": {
+		"build": "bunup",
+		"test": "bun test"
+	},
+	"peerDependencies": {
+		"squilo": "workspace:^0.7.0-beta.1",
+		"typescript": "^5.9.3"
+	},
+	"dependencies": {
+		"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+	},
+	"license": "MIT"
+}

@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
-import type { OutputStrategy } from './types';
-import type { ErrorType, ExecutionError, ExecutionResult } from '../../shared/runner/types';
-import type { DatabaseObject } from '../../connect/types';
+import type { OutputStrategy } from "squilo";
+import type { ExecutionResult, ExecutionError, ErrorType } from "squilo";
+import type { DatabaseObject } from "squilo";
 
 const checkEmpty = <T, TData>({ data }: ExecutionResult<T, TData>) =>
   (data === undefined || data === null) || (typeof data === 'object' && Object.keys(data).length === 0);

@@ -1,40 +1,39 @@
-import { defineConfig, type BuildOptions, type DefineConfigItem } from 'bunup'
+import { defineWorkspace, type DefineConfigItem } from "bunup";
 
-const config: DefineConfigItem = defineConfig({
-    entry: [
-        './src/index.ts',
-        './src/pipes/auth/strategies/index.ts',
-        './src/pipes/output/strategies/index.ts',
-    ],
-    sourcemap: 'linked',
-    format: 'esm',
-    target: 'bun',
-    unused: true,
-    exports: {
-        exclude: ['./pipes/**/*'],
-        customExports: (ctx) => {
-            return {
-                "./auth": {
-                    "import": {
-                        "types": "./dist/pipes/auth/strategies/index.d.ts",
-                        "default": "./dist/pipes/auth/strategies/index.js"
-                    }
-                },
-                "./output": {
-                    "import": {
-                        "types": "./dist/pipes/output/strategies/index.d.ts",
-                        "default": "./dist/pipes/output/strategies/index.js"
-                    }
-                },
-            }
-        },
-    },
-    splitting: true,
-    //external,
-    dts: {
-        splitting: true
-    }
-}) as unknown as DefineConfigItem;
+const config: DefineConfigItem = defineWorkspace(
+	[
+		{
+			name: "squilo",
+			root: "packages/squilo",
+			config: {
+				entry: ["src/index.ts"],
+				dts: { splitting: true, resolve: ["mssql", /^@types\//] },
+			},
+		},
+		{
+			name: "msal-auth-strategy",
+			root: "packages/msal-auth-strategy",
+			config: {
+				entry: ["src/index.ts"],
+				dts: { resolve: ["@azure/msal-node"] },
+			},
+		},
+		{
+			name: "xls-output-strategy",
+			root: "packages/xls-output-strategy",
+			config: {
+				entry: ["src/index.ts"],
+				dts: { resolve: ["xlsx"] },
+			},
+		},
+	],
+	{
+		format: "esm",
+		target: "bun",
+		sourcemap: "linked",
+		splitting: true,
+		exports: true,
+	},
+) as unknown as DefineConfigItem;
 
 export default config;
-

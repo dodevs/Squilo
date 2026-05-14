@@ -11,8 +11,7 @@ import {
 } from "@azure/msal-node";
 
 import * as path from "path";
-import type { ServerConfig } from "../../server/types";
-import type { AuthStrategy } from "./types";
+import type { AuthStrategy, ServerConfig } from "squilo";
 import { cwd } from "process";
 
 const SCOPES = ["https://database.windows.net//.default"];

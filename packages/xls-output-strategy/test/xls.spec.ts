@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { XlsOutputStrategy } from "./index";
+import { XlsOutputStrategy } from "../src/index";
 import * as XLSX from "xlsx";
 
 describe("XlsOutputStrategy", () => {
