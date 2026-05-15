@@ -5,9 +5,9 @@
 
 ## Project Overview
 
-**Squilo** is a **Bun-first TypeScript monorepo** for orchestrating SQL Server connections, authentication, and script execution across multiple databases. It targets multi-database scenarios: multi-tenant SaaS, batch jobs, migrations, reporting, and ETL pipelines.
+**Squilo** is a **Bun/Node.js TypeScript monorepo** for orchestrating SQL Server connections, authentication, and script execution across multiple databases. It targets multi-database scenarios: multi-tenant SaaS, batch jobs, migrations, reporting, and ETL pipelines.
 
-- **Runtime**: Bun v1.2.20+ (uses `Bun.file()`, `Bun.write()`, `Bun.env`, `await using`)
+- **Runtime**: Bun v1.2.20+ for development; Node.js ≥22 for consumers (uses `node:fs`, `process.env`, `await using`)
 - **Language**: TypeScript strict mode, ESNext, ESM only
 - **Build**: `bunup` with workspace config (`bunup.config.ts`)
 - **Linter/Formatter**: Biome 2.3.11 (tabs, double quotes)

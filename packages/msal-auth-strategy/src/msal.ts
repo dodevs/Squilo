@@ -1,106 +1,114 @@
 import {
-    type AuthenticationResult,
-    type Configuration,
-    type ICachePlugin,
-    type InteractiveRequest,
-    LogLevel,
-    type NodeAuthOptions,
-    PublicClientApplication,
-    type TokenCache,
-    type TokenCacheContext,
+	type AuthenticationResult,
+	type Configuration,
+	type ICachePlugin,
+	type InteractiveRequest,
+	LogLevel,
+	type NodeAuthOptions,
+	PublicClientApplication,
+	type TokenCache,
+	type TokenCacheContext,
 } from "@azure/msal-node";
 
-import * as path from "path";
+import * as path from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
 import type { AuthStrategy, ServerConfig } from "squilo";
-import { cwd } from "process";
+import { cwd } from "node:process";
 
 const SCOPES = ["https://database.windows.net//.default"];
 
 const cacheAccess = (hash: string) => {
-    const cacheFilePath = path.join(cwd(), `./.active-directory-cache/${hash}.json`);
+	const cacheFilePath = path.join(
+		cwd(),
+		`./.active-directory-cache/${hash}.json`,
+	);
 
-    const before = async (cacheContext: TokenCacheContext) => {
-        try {
-            const cacheFile = await Bun.file(cacheFilePath).text();
-            cacheContext.tokenCache.deserialize(cacheFile);
-        } catch (err) {
-            await Bun.write(cacheFilePath, "");
-            cacheContext.tokenCache.deserialize("");
-        }
-    };
+	const before = async (cacheContext: TokenCacheContext) => {
+		try {
+			const cacheFile = await readFile(cacheFilePath, "utf8");
+			cacheContext.tokenCache.deserialize(cacheFile);
+		} catch (err) {
+			await writeFile(cacheFilePath, "");
+			cacheContext.tokenCache.deserialize("");
+		}
+	};
 
-    const after = async (cacheContext: TokenCacheContext) => {
-        if (cacheContext.cacheHasChanged) {
-            try {
-                await Bun.write(cacheFilePath, cacheContext.tokenCache.serialize());
-            } catch (err) {
-                console.error(err);
-            }
-        }
-    };
+	const after = async (cacheContext: TokenCacheContext) => {
+		if (cacheContext.cacheHasChanged) {
+			try {
+				await writeFile(cacheFilePath, cacheContext.tokenCache.serialize());
+			} catch (err) {
+				console.error(err);
+			}
+		}
+	};
 
-    return {
-        beforeCacheAccess: before,
-        afterCacheAccess: after,
-    };
+	return {
+		beforeCacheAccess: before,
+		afterCacheAccess: after,
+	};
 };
 
-const msalConfig = (config: NodeAuthOptions, cachePlugin: ICachePlugin) => ({
-    auth: config,
-    cache: {
-        cachePlugin,
-    },
-    system: {
-        loggerOptions: {
-            loggerCallback(loglevel, message) {
-                console.log(message);
-            },
-            piiLoggingEnabled: false,
-            logLevel: LogLevel.Error,
-        },
-    },
-} as Configuration);
+const msalConfig = (config: NodeAuthOptions, cachePlugin: ICachePlugin) =>
+	({
+		auth: config,
+		cache: {
+			cachePlugin,
+		},
+		system: {
+			loggerOptions: {
+				loggerCallback(loglevel, message) {
+					console.log(message);
+				},
+				piiLoggingEnabled: false,
+				logLevel: LogLevel.Error,
+			},
+		},
+	}) as Configuration;
 
 export const GetToken = async (config: NodeAuthOptions): Promise<string> => {
-    const tenantId = config.authority?.replace("https://login.microsoftonline.com/", "");
-    const clientId = config.clientId;
+	const tenantId = config.authority?.replace(
+		"https://login.microsoftonline.com/",
+		"",
+	);
+	const clientId = config.clientId;
 
-    const pca: PublicClientApplication = new PublicClientApplication(
-        msalConfig(config, cacheAccess(`${tenantId}-${clientId}`)),
-    );
+	const pca: PublicClientApplication = new PublicClientApplication(
+		msalConfig(config, cacheAccess(`${tenantId}-${clientId}`)),
+	);
 
-    const tokenCache: TokenCache = pca.getTokenCache();
+	const tokenCache: TokenCache = pca.getTokenCache();
 
-    async function getAccount() {
-        return await tokenCache.getAllAccounts();
-    }
+	async function getAccount() {
+		return await tokenCache.getAllAccounts();
+	}
 
-    const accounts = await getAccount();
-    let result: AuthenticationResult | null;
+	const accounts = await getAccount();
+	let result: AuthenticationResult | null;
 
-    if (accounts.length > 0 && accounts[0]) {
-        try {
-            result = await pca.acquireTokenSilent({
-                scopes: SCOPES,
-                account: accounts[0],
-            });
+	if (accounts.length > 0 && accounts[0]) {
+		try {
+			result = await pca.acquireTokenSilent({
+				scopes: SCOPES,
+				account: accounts[0],
+			});
 
-            return result?.accessToken;
-        } catch (error) {
-            if (error instanceof Error) {
-                console.error('Silent token acquisition failed:', error.message);
-            }
-            console.log("Proceeding to interactive authentication");
-        }
-    }
+			return result?.accessToken;
+		} catch (error) {
+			if (error instanceof Error) {
+				console.error("Silent token acquisition failed:", error.message);
+			}
+			console.log("Proceeding to interactive authentication");
+		}
+	}
 
-    const interactiveRequest: InteractiveRequest = {
-        scopes: SCOPES,
-        openBrowser: async (url) => {
-            const { default: open } = await import("open");
-            open(url);
-        },
-        successTemplate: `
+	const interactiveRequest: InteractiveRequest = {
+		scopes: SCOPES,
+		openBrowser: async (url) => {
+			const { default: open } = await import("open");
+			open(url);
+		},
+		successTemplate: `
             <html lang="HTML5">
                 <head>
                     <title>Authentication Success</title>
@@ -116,24 +124,26 @@ export const GetToken = async (config: NodeAuthOptions): Promise<string> => {
                 </body>
             </html>
         `,
-    };
+	};
 
-    result = await pca.acquireTokenInteractive(interactiveRequest);
+	result = await pca.acquireTokenInteractive(interactiveRequest);
 
-    return result?.accessToken;
+	return result?.accessToken;
 };
 
-export const ActiveDirectoryAccessToken = async (config: NodeAuthOptions): Promise<AuthStrategy> => {
-    const accessToken = await GetToken(config);
-    return (config: ServerConfig) => {
-        return {
-            ...config,
-            authentication: {
-                type: 'azure-active-directory-access-token',
-                options: {
-                    token: accessToken
-                }
-            }
-        }
-    }
-}
+export const ActiveDirectoryAccessToken = async (
+	config: NodeAuthOptions,
+): Promise<AuthStrategy> => {
+	const accessToken = await GetToken(config);
+	return (config: ServerConfig) => {
+		return {
+			...config,
+			authentication: {
+				type: "azure-active-directory-access-token",
+				options: {
+					token: accessToken,
+				},
+			},
+		};
+	};
+};

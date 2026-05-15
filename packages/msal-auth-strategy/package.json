@@ -1,8 +1,15 @@
 {
 	"name": "@squilo/msal-auth-strategy",
-	"version": "0.7.0-beta.1",
+	"version": "0.7.0-beta.2",
 	"description": "Azure AD (Entra ID) interactive and silent authentication strategy for Squilo pipelines",
-	"keywords": ["azure", "entra-id", "msal", "authentication", "sql-server", "bun", "squilo"],
+	"keywords": [
+		"azure",
+		"entra-id",
+		"msal",
+		"authentication",
+		"sql-server",
+		"squilo"
+	],
 	"type": "module",
 	"files": [
 		"dist"
@@ -41,5 +48,8 @@
 		"@azure/msal-node": "^3.8.0",
 		"open": "^10.2.0"
 	},
-	"license": "MIT"
+	"license": "MIT",
+	"engines": {
+		"node": ">=22"
+	}
 }

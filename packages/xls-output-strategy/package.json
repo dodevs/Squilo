@@ -1,8 +1,15 @@
 {
 	"name": "@squilo/xls-output-strategy",
-	"version": "0.7.0-beta.1",
+	"version": "0.7.0-beta.2",
 	"description": "Excel (.xlsx) output strategy for Squilo data pipelines with separate or combined sheets",
-	"keywords": ["excel", "xlsx", "spreadsheet", "export", "sql-server", "bun", "squilo"],
+	"keywords": [
+		"excel",
+		"xlsx",
+		"spreadsheet",
+		"export",
+		"sql-server",
+		"squilo"
+	],
 	"type": "module",
 	"files": [
 		"dist"
@@ -40,5 +47,8 @@
 	"dependencies": {
 		"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
 	},
-	"license": "MIT"
+	"license": "MIT",
+	"engines": {
+		"node": ">=22"
+	}
 }

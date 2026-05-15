@@ -1,24 +1,40 @@
-import type { ConnectionError, TransactionError, RequestError, PreparedStatementError, Transaction, ConnectionPool } from "mssql";
+import type {
+	ConnectionError,
+	TransactionError,
+	RequestError,
+	PreparedStatementError,
+	Transaction,
+	ConnectionPool,
+} from "mssql";
 import type { DatabaseConnection } from "../../connect/types";
 import type { ConnectionPoolWrapper } from "../../../pool";
 
-export type ErrorType = Error | ConnectionError | TransactionError | RequestError | PreparedStatementError;
+export type ErrorType =
+	| Error
+	| ConnectionError
+	| TransactionError
+	| RequestError
+	| PreparedStatementError;
 
 export interface RunnerOptions<T, TReturn> {
-    connection: DatabaseConnection<T>;
-    fn: (connection: ConnectionPoolWrapper, database: T) => Promise<TReturn>;
-    onResult?: (data?: TReturn, error?: ErrorType) => Promise<void> | void
+	connection: DatabaseConnection<T>;
+	fn: (connection: ConnectionPoolWrapper, database: T) => Promise<TReturn>;
+	onResult?: (data?: TReturn, error?: ErrorType) => Promise<void> | void;
 }
 
-export type TransactionRunner<T> = <TReturn>(options: RunnerOptions<T, TReturn>) => Promise<void>;
+export type TransactionRunner<T> = <TReturn>(
+	options: RunnerOptions<T, TReturn>,
+) => Promise<void>;
 
-export type Execution<T> = { database: T }
+export type Execution<T> = { database: T };
 export type ExecutionError<T> = Execution<T> & { error: ErrorType };
-export type ExecutionData<T, TReturn> = Execution<T> & { data: TReturn }
-export type ExecutionResult<T, TReturn> = Execution<T> & Partial<ExecutionData<T, TReturn>> & Partial<ExecutionError<T>>
+export type ExecutionData<T, TReturn> = Execution<T> & { data: TReturn };
+export type ExecutionResult<T, TReturn> = Execution<T> &
+	Partial<ExecutionData<T, TReturn>> &
+	Partial<ExecutionError<T>>;
 
 export class SafeGuardError extends Error {
-    constructor() {
-        super(`Safe guard reached`);
-    }
+	constructor() {
+		super(`Safe guard reached`);
+	}
 }

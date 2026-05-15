@@ -6,59 +6,55 @@ import { AzureSqlEdge, SQL_PASSWORD } from "./container/container";
 import { DATABASES, SetupDatabases } from "./container/setup/databases";
 import { SetupUsers, type User } from "./container/setup/users";
 
-describe('Squilo test', async () => {
-  const container = await AzureSqlEdge();
+describe("Squilo test", async () => {
+	const container = await AzureSqlEdge();
 
-  const LocalServer = Server({
-    server: container.getHost(),
-    port: container.getMappedPort(1433),
-    options: {
-      encrypt: false
-    },
-  })
-    .Auth(UserAndPassword("sa", SQL_PASSWORD));
+	const LocalServer = Server({
+		server: container.getHost(),
+		port: container.getMappedPort(1433),
+		options: {
+			encrypt: false,
+		},
+	}).Auth(UserAndPassword("sa", SQL_PASSWORD));
 
-  beforeAll(async () => {
-    await SetupDatabases(container);
-    await SetupUsers(container);
-  })
+	beforeAll(async () => {
+		await SetupDatabases(container);
+		await SetupUsers(container);
+	});
 
-  it("Get one from each database", async () => {
-
-    const [, users] = await LocalServer
-      .Connect(DATABASES)
-      .Retrieve(async (conn) => {
-        const result = await conn.query<User>`
+	it("Get one from each database", async () => {
+		const [, users] = await LocalServer.Connect(DATABASES)
+			.Retrieve(async (conn) => {
+				const result = await conn.query<User>`
             SELECT TOP 1 * FROM Users
         `;
 
-        return result.recordset;
-      })
-      .Output(MergeOutputStrategy());
+				return result.recordset;
+			})
+			.Output(MergeOutputStrategy());
 
-    expect(users).toHaveLength(5);
-  });
+		expect(users).toHaveLength(5);
+	});
 
-  test('Should fix user\'s email that are ending with extra space', async () => {
-    await LocalServer
-      .Connect(DATABASES)
-      .Execute(async (conn) => {
-        await conn.query`
+	test("Should fix user's email that are ending with extra space", async () => {
+		await LocalServer.Connect(DATABASES).Execute(async (conn) => {
+			await conn.query`
             UPDATE Users SET Email = RTRIM(Email)
         `;
-      })
+		});
 
-    const [, users] = await LocalServer
-      .Connect(DATABASES)
-      .Retrieve(async (conn) => {
-        const result = await conn.query<User>`
+		const [, users] = await LocalServer.Connect(DATABASES)
+			.Retrieve(async (conn) => {
+				const result = await conn.query<User>`
             SELECT * FROM Users
           `;
 
-        return result.recordset;
-      })
-      .Output(MergeOutputStrategy());
+				return result.recordset;
+			})
+			.Output(MergeOutputStrategy());
 
-    expect(users.every((user) => user.Email.endsWith(" ") === false)).toBe(true);
-  })
+		expect(users.every((user) => user.Email.endsWith(" ") === false)).toBe(
+			true,
+		);
+	});
 });

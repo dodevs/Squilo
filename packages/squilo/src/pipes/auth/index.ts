@@ -4,11 +4,13 @@ import { Connect } from "../connect";
 import type { AuthenticationChain } from "./types";
 import type { AuthStrategy } from "./strategies/types";
 
-export const Auth = (config: ServerConfig) => (strategy: AuthStrategy): AuthenticationChain => {
-    const configWithAuth = strategy(config);
-    const pool = Pool(configWithAuth);
+export const Auth =
+	(config: ServerConfig) =>
+	(strategy: AuthStrategy): AuthenticationChain => {
+		const configWithAuth = strategy(config);
+		const pool = Pool(configWithAuth);
 
-    return {
-        Connect: Connect(pool)
-    }
-}
+		return {
+			Connect: Connect(pool),
+		};
+	};

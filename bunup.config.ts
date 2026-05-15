@@ -29,7 +29,7 @@ const config: DefineConfigItem = defineWorkspace(
 	],
 	{
 		format: "esm",
-		target: "bun",
+		target: "node",
 		sourcemap: "linked",
 		splitting: true,
 		exports: true,
