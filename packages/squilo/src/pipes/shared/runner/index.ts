@@ -1,84 +1,105 @@
-import { Presets, SingleBar } from 'cli-progress';
-import { LoadEnv } from '../../../utils/load-env';
-import { type ErrorType, type RunnerOptions, type TransactionRunner, SafeGuardError } from './types';
-import type { MSSQLError, RequestError } from 'mssql';
-import type { DatabaseObject } from '../../connect/types';
-import { ConnectionPoolWrapper } from '../../../pool';
+import { Effect, Result, Stream } from "effect";
+import type { MSSQLError, RequestError } from "mssql";
+import { ConnectionPoolWrapper, type Pool } from "../../../pool";
+import { LoadEnv } from "../../../utils/load-env";
+import type { DatabaseObject } from "../../connect/types";
+import { Progress } from "../progress";
+import {
+    ConnectionFailed,
+    ExecutionFailed,
+    type Databases,
+    type ErrorType,
+    type ExecutionResult,
+    type RunnerError,
+    type RunnerFn,
+    type RunStream,
+} from "./types";
 
-export const Runner = <T extends string | DatabaseObject>(): [TransactionRunner<T>, SingleBar] => {
+const nameOf = (database: string | DatabaseObject): string =>
+    typeof database === "string" ? database : database.Database;
 
-    const singleBar = new SingleBar({
-        format: `{bar} {percentage}% | {value}/{total} | {database}`,
-        hideCursor: true
-    }, Presets.shades_classic);
-
-    const [guard, trackError] = (() => { 
-        const limit = LoadEnv().SAFE_GUARD;
-        let errorsCount = 0, open = false;
-
-        const guard = async () => {
-            if (open) {
-                throw new SafeGuardError();
-            }
-        }
-
-        const trackError = () => {
-            errorsCount++;
-            if (limit > 0 && errorsCount >= limit) {
-                open = true;
-            }
-        }
-
-        return [guard, trackError];
-    })()
-
-    const runner = async <TReturn>({
-        connection: dc,
-        fn,
-        onResult = () => { }
-    }: RunnerOptions<T, TReturn>): Promise<void> => {
-        const databaseName = typeof dc.database === 'string' ? dc.database : dc.database.Database;
-        return guard()
-            .then(() => {
-                if (singleBar && Bun.env.NODE_ENV !== 'test') {
-                    singleBar.update({ database: databaseName });
-                }
-            })
-            .then(() => dc.connection())
-            .then(async (conn) => {
-                await using wrapped = new ConnectionPoolWrapper(conn);
-                return await fn(wrapped, dc.database);
-            })
-            .then(result => onResult(result))
-            .then(() => {
-                if (singleBar && Bun.env.NODE_ENV !== 'test') {
-                    singleBar.increment(1, { database: databaseName });
-                }
-            })
-            .catch(error => {
-                if (singleBar && Bun.env.NODE_ENV !== 'test') {
-                    singleBar.increment(1, { database: databaseName });
-                }
-
-                if (error instanceof SafeGuardError) {
-                    return;
-                }
-
-                trackError();
-                onResult(undefined, ({
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack,
-                    code: (error as MSSQLError).code || undefined,
-                    number: (error as RequestError).number || undefined,
-                    state: (error as RequestError).state || undefined,
-                    class: (error as RequestError).class || undefined,
-                    serverName: (error as RequestError).serverName || undefined,
-                    procName: (error as RequestError).procName || undefined,
-                    lineNumber: (error as RequestError).lineNumber || undefined
-                }) as ErrorType);
-            });
-    };
-
-    return [runner, singleBar];
+const toErrorType = (cause: unknown): ErrorType => {
+    const error = cause as MSSQLError & RequestError;
+    return {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        code: error.code || undefined,
+        number: error.number || undefined,
+        state: error.state || undefined,
+        class: error.class || undefined,
+        serverName: error.serverName || undefined,
+        procName: error.procName || undefined,
+        lineNumber: error.lineNumber || undefined
+    } as ErrorType;
 };
+
+export const Runner = <T extends string | DatabaseObject>(
+    pool: Pool,
+    databases$: Databases<T>,
+    concurrent?: number
+): RunStream<T> => <TReturn>(fn: RunnerFn<T, TReturn>) => Stream.unwrap(Effect.gen(function* () {
+    const databases = yield* databases$;
+    const safeGuard = LoadEnv().SAFE_GUARD;
+    const progress = Progress();
+    let errorsCount = 0;
+
+    const tripped = () => safeGuard > 0 && errorsCount >= safeGuard;
+
+    const connection = (database: T) => Effect.acquireRelease(
+        Effect.tryPromise({
+            try: () => pool.connect({ database: nameOf(database) })(),
+            catch: (cause) => new ConnectionFailed(cause),
+        }).pipe(Effect.map((conn) => new ConnectionPoolWrapper(conn))),
+        (conn) => Effect.promise(() => conn.close().catch(() => { })),
+    );
+
+    const execute = (database: T): Effect.Effect<TReturn, RunnerError> => connection(database).pipe(
+        Effect.flatMap((conn) => Effect.tryPromise({
+            try: () => fn(conn, database),
+            catch: (cause) => new ExecutionFailed(cause),
+        })),
+        Effect.scoped,
+    );
+
+    // Once SAFE_GUARD errors are reached, pending databases are skipped (nothing is emitted for them).
+    // In-flight executions are not interrupted.
+    const run = (database: T): Effect.Effect<ExecutionResult<T, TReturn> | undefined> => Effect.suspend(() => {
+        const name = nameOf(database);
+
+        if (tripped()) {
+            progress.increment(name);
+            return Effect.succeed(undefined);
+        }
+
+        progress.update(name);
+        return execute(database).pipe(
+            Effect.result,
+            Effect.map((result) => {
+                progress.increment(name);
+
+                if (Result.isSuccess(result)) {
+                    return { database, data: result.success, error: undefined };
+                }
+
+                errorsCount++;
+                return { database, data: undefined, error: toErrorType(result.failure.cause) };
+            }),
+        );
+    });
+
+    // The first SAFE_GUARD databases run one at a time, so a systematic failure halts
+    // the run before fanning out. The rest run in a sliding window of `concurrent`.
+    const warmup = Math.max(0, Math.min(databases.length, concurrent ?? databases.length, safeGuard || 0));
+
+    return Stream.concat(
+        Stream.fromIterable(databases.slice(0, warmup)).pipe(Stream.mapEffect(run)),
+        Stream.fromIterable(databases.slice(warmup)).pipe(
+            Stream.mapEffect(run, { concurrency: concurrent ?? "unbounded", unordered: true }),
+        ),
+    ).pipe(
+        Stream.filter((result): result is ExecutionResult<T, TReturn> => result !== undefined),
+        Stream.onStart(Effect.sync(() => progress.start(databases.length))),
+        Stream.ensuring(Effect.sync(() => progress.stop())),
+    );
+}));

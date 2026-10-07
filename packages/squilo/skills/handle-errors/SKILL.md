@@ -3,7 +3,7 @@ name: handle-errors
 description: >
   Handle errors across multi-database Squilo operations. Understand SAFE_GUARD
   env var (default=1, NaN disables), ExecutionError[] tuple returns,
-  SafeGuardError halting behavior. Errors returned not thrown. Check array
+  SAFE_GUARD halting behavior. Errors returned not thrown. Check array
   length after every operation. Mssql-specific error fields: code, number,
   state, class, serverName, procName, lineNumber.
 type: core
@@ -296,27 +296,26 @@ const [errors] = await Server({ ... }).Auth(...)
 
 Source: packages/squilo/src/utils/load-env.ts
 
-### HIGH Confusing SAFE_GUARD halting with error suppression
+### HIGH Expecting errors.length to never exceed SAFE_GUARD
 
 Wrong:
 
 ```ts
 import { Server, UserAndPassword, MergeOutputStrategy } from "squilo";
 
-// Assuming SAFE_GUARD=1 means "stop after first error and don't try others"
-// Actually: SAFE_GUARD=1 means "after 1 error, stop QUEUING new databases"
-// The current batch still executes
+// Assuming SAFE_GUARD=1 means "at most 1 error, ever"
 process.env.SAFE_GUARD = "1";
 const [errors] = await Server({ ... }).Auth(...)
-	.Connect(["DB1", "DB2", "DB3", "DB4"], 2) // concurrent=2
+	.Connect(["DB1", "DB2", "DB3", "DB4"], 3) // concurrent=3
 	.Retrieve(async (conn) => {
-		const result = await conn.query`SELECT * FROM MissingTable`;
+		const result = await conn.query`SELECT * FROM Orders`;
 		return result.recordset;
 	})
 	.Output(MergeOutputStrategy());
 
-// If DB1 and DB2 are in first batch and both fail,
-// DB3 and DB2 never start. But DB1 and DB2 both execute.
+// DB1 runs alone first (warm-up) and succeeds.
+// DB2, DB3 and DB4 then run at the same time. If all three fail,
+// errors.length === 3: the guard only stops databases that have not started yet.
 ```
 
 Correct:
@@ -324,23 +323,24 @@ Correct:
 ```ts
 import { Server, UserAndPassword, MergeOutputStrategy } from "squilo";
 
-// SAFE_GUARD limits how many errors trigger before stopping FURTHER connections
-// Databases already in the current batch still execute
-// Set concurrent=1 to process one at a time and stop immediately after first error
+// The first min(SAFE_GUARD, concurrent) databases run one at a time, so a
+// systematic failure (missing table, bad login) halts the run before fanning out.
+// After SAFE_GUARD errors, databases that have not started are skipped (no result
+// is emitted for them). Executions already running are not cancelled.
+// For strict "stop on first error" across the whole run, use concurrent=1.
 process.env.SAFE_GUARD = "1";
 const [errors] = await Server({ ... }).Auth(...)
 	.Connect(["DB1", "DB2", "DB3", "DB4"], 1) // process one at a time
 	.Retrieve(async (conn) => {
-		const result = await conn.query`SELECT * FROM MissingTable`;
+		const result = await conn.query`SELECT * FROM Orders`;
 		return result.recordset;
 	})
 	.Output(MergeOutputStrategy());
 
-// With concurrent=1: DB1 fails, SAFE_GUARD triggers, DB2-4 never start
-// errors.length === 1
+// With concurrent=1: the first failure trips the guard and the remaining databases never start
 ```
 
-`SAFE_GUARD` halts further connections but does not cancel already-queued databases. Use `concurrent=1` with `SAFE_GUARD=1` for strict "stop on first error" behavior.
+`SAFE_GUARD` halts databases that have not started but does not cancel in-flight executions. Concurrency is a sliding window: a new database starts as soon as any running one finishes.
 
 Source: packages/squilo/src/pipes/shared/runner/index.ts
 

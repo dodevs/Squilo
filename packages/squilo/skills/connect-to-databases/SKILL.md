@@ -52,7 +52,7 @@ const [errors, allUsers] = await Server({
 	.Output(MergeOutputStrategy());
 ```
 
-`2` = max 2 concurrent connections. Remaining databases queue behind the concurrency limit.
+`2` = max 2 concurrent connections. Remaining databases wait in a sliding window: each one starts as soon as any running database finishes.
 
 ### Dynamic database discovery via query
 

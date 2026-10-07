@@ -265,6 +265,6 @@ const errors = await Server({...})
 // All 5 databases processed, errors contains all failures
 ```
 
-`SAFE_GUARD` defaults to `1`. After N errors, further database connections are halted. Set `SAFE_GUARD=0` to process all databases regardless of errors. Already-queued databases in the current batch still execute.
+`SAFE_GUARD` defaults to `1`. After N errors, further database connections are halted. Set `SAFE_GUARD=0` to process all databases regardless of errors. Executions already running finish and are reported; databases that have not started are skipped.
 
 Source: packages/squilo/src/utils/load-env.ts

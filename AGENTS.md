@@ -135,7 +135,7 @@ packages/squilo/src/
     │   ├── index.ts                # Connect(pool) — single DB, array, or discovery query
     │   └── types.ts                # ConnectionChain, DatabaseConnection, DatabaseObject, ConnectionOptions
     ├── retrieve/
-    │   ├── index.ts                # Retrieve — streams results via TransformStream
+    │   ├── index.ts                # Retrieve — Runner stream exposed as a ReadableStream
     │   └── types.ts                # RetrieveChain (Transform | Output)
     ├── execute/
     │   └── index.ts                # Execute — runs fn per DB, collects errors
@@ -155,9 +155,10 @@ packages/squilo/src/
     │       ├── console.spec.ts
     │       └── xls.spec.ts         # (spec for strategy moved to @squilo/xls-output-strategy)
     └── shared/
+        ├── progress.ts             # cli-progress bar (silent when NODE_ENV=test)
         └── runner/
-            ├── index.ts            # Runner — per-DB execution with progress bar + SAFE_GUARD
-            └── types.ts            # RunnerOptions, ExecutionResult, ExecutionError, SafeGuardError
+            ├── index.ts            # Runner — Effect Stream: per-DB acquire/release, sliding-window concurrency, SAFE_GUARD
+            └── types.ts            # RunStream, ExecutionResult, ExecutionError, ConnectionFailed/ExecutionFailed
 ```
 
 ### Key Types
@@ -213,10 +214,10 @@ The `Pool` factory creates a `Record<string, () => Promise<ConnectionPool>>` cac
 Retrieve uses `ReadableStream` / `TransformStream` to stream results. `Transform` pipes through another `TransformStream`. The output strategy consumes the stream. This keeps memory low and allows processing results as they arrive.
 
 ### 4. SAFE_GUARD (`packages/squilo/src/utils/load-env.ts`)
-Environment variable `SAFE_GUARD` limits how many database errors trigger before halting further connections. Default: `1`. Set to `0` to disable. The runner throws `SafeGuardError` when errors exceed the guard, which is silently caught — execution simply stops without propagating errors.
+Environment variable `SAFE_GUARD` limits how many database errors trigger before halting further connections. Default: `1`. Set to `0` to disable. The first `min(SAFE_GUARD, concurrent)` databases run one at a time; once the guard trips, databases that have not started are skipped (no result emitted) while in-flight executions finish.
 
 ### 5. Concurrency Control
-`.Connect(databases, concurrent?)` accepts an optional concurrency parameter that controls how many database connections are opened in parallel. Default is sequential (1 at a time).
+`.Connect(databases, concurrent?)` accepts an optional concurrency parameter that controls how many databases run in parallel, as a sliding window (a new database starts as soon as any running one finishes). Default is unbounded (all at once).
 
 ### 6. Dynamic Database Discovery
 `ConnectionOptions` allows specifying a management database and a SQL query that returns rows with a `Database` column. Uses `DatabaseObject` type (`{ Database: string }`) for type-safe discovery.
@@ -259,6 +260,7 @@ coverageReporter = ["text", "lcov"]
 test/
 ├── index.spec.ts              # Integration: Retrieve + Execute across 5 DBs
 ├── connect.spec.ts            # Connection overloads (single, array, concurrency, discovery)
+├── runner.spec.ts             # Runner with an in-memory Pool (no Docker): concurrency, SAFE_GUARD, discovery failure
 ├── connection.spec.ts         # ConnectionPoolWrapper + TransactionWrapper disposal
 ├── transform.spec.ts          # Transform pipe: async transform, property addition
 ├── error-handling.spec.ts     # SAFE_GUARD env var behavior (retrieve + execute)
