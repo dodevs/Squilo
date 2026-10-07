@@ -38,7 +38,7 @@ export function JsonOutputStrategy<T, TData>(includeEmpty = true, includeErrors 
     let filename = process.argv[1]?.replace(/\.(?:js|ts)/, '')
     filename = `${filename}-${Date.now()}.json`;
 
-    class DataProcessingStream extends GetProcessingStream<T, TData>(includeEmpty, includeErrors, errors) {}
+    const DataProcessingStream = GetProcessingStream<T, TData>(includeEmpty, includeErrors, errors);
 
     try {
       const writer = createWriteStream(filename);
