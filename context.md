@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-**Squilo** is a **Bun-first TypeScript monorepo** for orchestrating SQL Server connections, authentication, and script execution across multiple databases. It targets multi-database scenarios: multi-tenant SaaS, batch jobs, migrations, reporting, and ETL pipelines.
+**Squilo** is a **Bun/Node.js TypeScript monorepo** for orchestrating SQL Server connections, authentication, and script execution across multiple databases. It targets multi-database scenarios: multi-tenant SaaS, batch jobs, migrations, reporting, and ETL pipelines.
 
-- **Runtime**: Bun (v1.2.20+), uses Bun-specific APIs (`Bun.file()`, `Bun.write()`, `Bun.env`, `await using` disposal)
+- **Runtime**: Bun (v1.2.20+) for development; consumers run on Node.js ≥22 or Bun (published code uses `node:fs`, `process.env`, `await using` disposal; no Bun APIs)
 - **Language**: TypeScript strict mode, ESNext target, ESM only
 - **Build**: `bunup` with per-package config (workspace build at root `bunup.config.ts`)
 - **Linter/Formatter**: Biome 2.3.11 (tabs, double quotes)
@@ -65,7 +65,7 @@ The root `package.json` is private with `workspaces: ["packages/*"]`. Three pack
 
 Extension packages (`msal-auth-strategy`, `xls-output-strategy`) declare `squilo` as a **peer dependency** using workspace protocol: `"squilo": "workspace:^0.7.0-beta.3"`. They import types from `squilo` (`AuthStrategy`, `OutputStrategy`, `ExecutionResult`, etc.) but do not bundle them.
 
-**Build**: Root `bunup.config.ts` uses `defineWorkspace()` to configure three parallel ESM builds. Each package gets its own `dist/` with code splitting and declaration file generation. All use `format: "esm"`, `target: "bun"`, `sourcemap: "linked"`, `splitting: true`, and `exports: true`.
+**Build**: Root `bunup.config.ts` uses `defineWorkspace()` to configure three parallel ESM builds. Each package gets its own `dist/` with code splitting and declaration file generation. All use `format: "esm"`, `target: "node"` (the output also runs on Bun), `sourcemap: "linked"`, `splitting: true`, and `exports: true`.
 
 ---
 
@@ -372,7 +372,7 @@ type TransformFunction<TInput, TOutput> = (data: TInput) => TOutput | Promise<TO
 ```
 
 ### Progress bar
-Disabled when `Bun.env.NODE_ENV === 'test'`. Uses `cli-progress`'s `SingleBar` with format: `{bar} {percentage}% | {value}/{total} | {database}`. Created by `Progress()` in `packages/squilo/src/pipes/shared/progress.ts` each time a run stream starts.
+Disabled when `process.env.NODE_ENV === 'test'`. Uses `cli-progress`'s `SingleBar` with format: `{bar} {percentage}% | {value}/{total} | {database}`. Created by `Progress()` in `packages/squilo/src/pipes/shared/progress.ts` each time a run stream starts.
 
 ---
 
@@ -487,7 +487,7 @@ packages/xls-output-strategy/test/
 - `TestDB1`–`TestDB5`: Each has 10 faker-generated users (configurable via `quantity` option)
 - `ClientsManager`: Contains `Clients` table with `DatabaseName` column — used for discovery query tests
 - SA password: `YourStrong@Passw0rd`
-- Progress bars: disabled in test env (`Bun.env.NODE_ENV === 'test'` check in `pipes/shared/progress.ts`)
+- Progress bars: disabled in test env (`process.env.NODE_ENV === 'test'` check in `pipes/shared/progress.ts`)
 - Docker-free specs: `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts`, `progress.spec.ts`, and the output strategy specs (`merge.spec.ts`, `json.spec.ts`, `console.spec.ts`, `xls.spec.ts`), which use in-memory `ReadableStream` mocks
 
 ---

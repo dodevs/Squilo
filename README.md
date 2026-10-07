@@ -6,7 +6,7 @@
 ![bun compatible](https://img.shields.io/badge/bun-v1.2.20%2B-blue)
 ![license](https://img.shields.io/github/license/dodevs/Squilo)
 
-Squilo is a Bun-first TypeScript library for orchestrating SQL Server connections, authentication, and script execution with modern TypeScript patterns. Built for multi-database scenarios — multi-tenant SaaS, batch jobs, migrations, and reporting.
+Squilo is a TypeScript library (Node.js ≥22 or Bun) for orchestrating SQL Server connections, authentication, and script execution with modern TypeScript patterns. Built for multi-database scenarios — multi-tenant SaaS, batch jobs, migrations, and reporting.
 
 ## Monorepo Packages
 

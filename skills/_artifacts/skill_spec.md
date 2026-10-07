@@ -4,7 +4,7 @@ Generated from domain discovery for the Squilo monorepo.
 
 ## Library Overview
 
-**Squilo** is a Bun-first TypeScript library for orchestrating SQL Server connections, authentication, and script execution across multiple databases. It uses a fluent pipeline API:
+**Squilo** is a TypeScript library (Node.js ≥22 or Bun) for orchestrating SQL Server connections, authentication, and script execution across multiple databases. It uses a fluent pipeline API:
 
 ```
 Server(config) → .Auth(strategy) → .Connect(db|dbs|query) → .Retrieve(fn) or .Execute(fn) → [.Transform(fn)] → .Output(strategy)
@@ -352,7 +352,7 @@ const CsvOutputStrategy = (): OutputStrategy<T, TReturn, [ExecutionError<T>[], s
 
 **Pattern:** A `UseSqlServer(setup?)` helper (the repo's own `test/container/container.ts`, not exported by `squilo` — copy the pattern): starts Azure SQL Edge in `beforeAll` with its own hook timeout (`SQL_SERVER_TIMEOUT`; bunfig has no test timeout option, and Bun's default is 5 s), waits until logins work, runs `setup`, stops the container in `afterAll`. `sql.server` / `sql.container` only work inside tests or hooks ("SQL Server is not started yet" at describe time).
 
-**Key consideration:** The progress bar is silent when `Bun.env.NODE_ENV === 'test'` (`src/pipes/shared/progress.ts`; `bun test` sets it unless already set). On Windows, Bun can't reach Docker's named pipe ("Could not find a working container runtime strategy"): run the tests in a Linux Bun container — `bun run test:docker` from the repo root.
+**Key consideration:** The progress bar is silent when `process.env.NODE_ENV === 'test'` (`src/pipes/shared/progress.ts`; `bun test` sets it unless already set). On Windows, Bun can't reach Docker's named pipe ("Could not find a working container runtime strategy"): run the tests in a Linux Bun container — `bun run test:docker` from the repo root.
 
 **Related skills:** `connect-to-server`, `connect-to-databases`.
 

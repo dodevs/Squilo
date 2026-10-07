@@ -5,9 +5,9 @@
 
 ## Project Overview
 
-**Squilo** is a **Bun-first TypeScript monorepo** for orchestrating SQL Server connections, authentication, and script execution across multiple databases. It targets multi-database scenarios: multi-tenant SaaS, batch jobs, migrations, reporting, and ETL pipelines.
+**Squilo** is a **Bun/Node.js TypeScript monorepo** for orchestrating SQL Server connections, authentication, and script execution across multiple databases. It targets multi-database scenarios: multi-tenant SaaS, batch jobs, migrations, reporting, and ETL pipelines.
 
-- **Runtime**: Bun v1.2.20+ (uses `Bun.file()`, `Bun.write()`, `Bun.env`, `await using`)
+- **Runtime**: Bun v1.2.20+ for development; Node.js ≥22 or Bun for consumers (published code uses `node:fs`, `process.env`, `await using`; no Bun APIs)
 - **Language**: TypeScript strict mode, ESNext, ESM only
 - **Build**: `bunup` with workspace config (`bunup.config.ts`)
 - **Linter/Formatter**: Biome 2.3.11 (tabs, double quotes)
@@ -343,7 +343,7 @@ defineWorkspace([
     { name: "squilo", root: "packages/squilo", config: { entry: ["src/index.ts"], dts: { ... } } },
     { name: "msal-auth-strategy", root: "packages/msal-auth-strategy", config: { entry: ["src/index.ts"], dts: { ... } } },
     { name: "xls-output-strategy", root: "packages/xls-output-strategy", config: { entry: ["src/index.ts"], dts: { ... } } },
-], { format: "esm", target: "bun", sourcemap: "linked", splitting: true, exports: true })
+], { format: "esm", target: "node", sourcemap: "linked", splitting: true, exports: true })
 ```
 
 Output: `dist/index.js` (ESM) + `dist/index.d.ts` (declarations) per package.
@@ -376,7 +376,7 @@ Each extension package:
 | Variable | Purpose | Default |
 |---|---|---|
 | `SAFE_GUARD` | Database errors after which not-yet-started databases are skipped | `1` (0 or invalid = disabled) |
-| `.env` file | Loaded by Bun automatically (`Bun.env`) | — |
+| `.env` file | Loaded automatically by Bun; on Node.js use `node --env-file=.env` | — |
 
 ## @tanstack/intent Skills System
 

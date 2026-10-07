@@ -289,7 +289,7 @@ const [errors] = await Server({ ... }).Auth(...)
 	.Output(MergeOutputStrategy());
 ```
 
-`LoadEnv()` uses `Number.parseInt(Bun.env.SAFE_GUARD || '1', 10)`. Invalid strings parse to `NaN`. `NaN > 0` is `false`, so the guard never triggers. Only use numeric strings.
+`LoadEnv()` uses `Number.parseInt(process.env.SAFE_GUARD || '1', 10)`. Invalid strings parse to `NaN`. `NaN > 0` is `false`, so the guard never triggers. Only use numeric strings.
 
 Source: packages/squilo/src/utils/load-env.ts
 

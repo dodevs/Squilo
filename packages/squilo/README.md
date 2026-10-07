@@ -14,7 +14,7 @@ Server(config) → .Auth(strategy) → .Connect(db/dbs/query) → .Retrieve(fn) 
 ```
 
 **Key Features:**
-- ✅ **Bun-first**: Built for Bun runtime with optimal performance
+- ✅ **Node.js ≥22 and Bun**: no runtime-specific APIs in the published code
 - ✅ **Connection pooling**: Automatic pool management with configurable concurrency
 - ✅ **Multi-database orchestration**: Process hundreds of databases efficiently
 - ✅ **Early connection release**: Transform pipe closes DB connections before expensive operations

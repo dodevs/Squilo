@@ -6,7 +6,7 @@ library:
   name: squilo
   version: '0.7.0-beta.3'
   repository: 'https://github.com/dodevs/Squilo'
-  description: 'Bun-first TypeScript library for orchestrating SQL Server connections, authentication, and script execution across multiple databases via a fluent pipeline API.'
+  description: 'TypeScript library (Node.js >=22 or Bun) for orchestrating SQL Server connections, authentication, and script execution across multiple databases via a fluent pipeline API.'
 
 generated_from:
   domain_map: 'skills/_artifacts/domain_map.yaml'

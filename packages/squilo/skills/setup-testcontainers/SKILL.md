@@ -305,6 +305,6 @@ Correct:
 NODE_ENV=test bun test
 ```
 
-Squilo's progress bar is silent when `Bun.env.NODE_ENV === "test"`. `bun test` sets that by default; only an explicit `NODE_ENV` (shell or `.env`) re-enables the bar.
+Squilo's progress bar is silent when `process.env.NODE_ENV === "test"`. `bun test` sets that by default; only an explicit `NODE_ENV` (shell or `.env`) re-enables the bar.
 
 Source: packages/squilo/src/pipes/shared/progress.ts
