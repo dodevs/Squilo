@@ -262,6 +262,7 @@ test/
 ├── connect.spec.ts            # Connection overloads (single, array, concurrency, discovery)
 ├── runner.spec.ts             # Runner with an in-memory Pool (no Docker): concurrency, SAFE_GUARD, discovery failure
 ├── connection.spec.ts         # ConnectionPoolWrapper + TransactionWrapper disposal
+├── pool.spec.ts               # TransactionWrapper with a fake Transaction (no Docker): commit failure rolls back
 ├── transform.spec.ts          # Transform pipe: async transform, property addition
 ├── error-handling.spec.ts     # SAFE_GUARD env var behavior (retrieve + execute)
 └── container/                 # Test container helpers

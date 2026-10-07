@@ -11,8 +11,8 @@ export const TransactionWrapper = function(this: TransactionWrapper, transaction
     let committed: boolean = false;
 
     this.commit$ = async function() {
+        await this.commit();
         committed = true;
-        return await this.commit();
     };
 
     this[Symbol.asyncDispose] = async function() {
