@@ -1,7 +1,7 @@
 {
  "name": "squilo",
  "version": "0.7.0-beta.3",
- "description": "Bun-first TypeScript library for orchestrating SQL Server connections, authentication, and script execution",
+ "description": "TypeScript multi-database pipeline orchestrator for SQL Server connections, authentication, and script execution",
  "keywords": [
   "sql-server",
   "mssql",
@@ -9,7 +9,7 @@
   "multi-tenant",
   "etl",
   "pipeline",
-  "bun",
+  "nodejs",
   "typescript",
   "tanstack-intent"
  ],
@@ -61,5 +61,8 @@
   "effect": "^4.0.1",
   "mssql": "^12.2.0"
  },
- "license": "MIT"
+ "license": "MIT",
+ "engines": {
+  "node": ">=22"
+ }
 }

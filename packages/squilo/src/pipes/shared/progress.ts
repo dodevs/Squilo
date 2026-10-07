@@ -15,7 +15,7 @@ const Silent: Progress = {
 };
 
 export const Progress = (): Progress => {
-    if (Bun.env.NODE_ENV === "test") {
+    if (process.env.NODE_ENV === "test") {
         return Silent;
     }
 

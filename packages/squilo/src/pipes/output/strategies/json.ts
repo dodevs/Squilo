@@ -1,3 +1,4 @@
+import { createWriteStream } from 'node:fs';
 import type { ExecutionError, ExecutionResult } from '../../shared/runner/types';
 import type { OutputStrategy } from './types';
 
@@ -40,20 +41,28 @@ export function JsonOutputStrategy<T, TData>(includeEmpty = true, includeErrors 
     class DataProcessingStream extends GetProcessingStream<T, TData>(includeEmpty, includeErrors, errors) {}
 
     try {
-      const file = Bun.file(filename);
-      const writer = file.writer();
+      const writer = createWriteStream(filename);
 
-      writer.write('[');
-      let first = true;
-      for await (const chunk of result.pipeThrough(new DataProcessingStream())) {
-        if (!first) {
-          writer.write(',\n');
+      try {
+        writer.write('[');
+        let first = true;
+        for await (const chunk of result.pipeThrough(new DataProcessingStream())) {
+          if (!first) {
+            writer.write(',\n');
+          }
+          writer.write(JSON.stringify(chunk, null, 2));
+          first = false;
         }
-        writer.write(`${JSON.stringify(chunk, null, 2)}`);
-        first = false;
+        const done = new Promise<void>((resolve, reject) => {
+          writer.on('finish', resolve);
+          writer.on('error', reject);
+        });
+        writer.write(']');
+        writer.end();
+        await done;
+      } finally {
+        writer.destroy();
       }
-      writer.write(']');
-      writer.end();
     } catch (error) {
       console.error('Error writing JSON file:', error);
       throw error;

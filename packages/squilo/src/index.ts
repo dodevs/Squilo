@@ -1,5 +1,6 @@
 export * from "./pipes/server"
-export * as SQL from "mssql"
+import mssql from "mssql";
+export { mssql as SQL };
 export type { AuthStrategy } from "./pipes/auth/strategies/types";
 export type { ServerConfig } from "./pipes/server/types";
 export type { OutputStrategy } from "./pipes/output/strategies/types";

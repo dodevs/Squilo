@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 import * as XLSX from 'xlsx';
 import type { OutputStrategy } from "squilo";
 import type { ExecutionResult, ExecutionError, ErrorType } from "squilo";
@@ -150,7 +151,7 @@ export function XlsOutputStrategy<T extends string | DatabaseObject, TData>(comb
     try {
       if (workbook.SheetNames.length) {
         const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
-        await Bun.write(filename, buffer);
+        await writeFile(filename, buffer);
       }
 
       if (!includeErrors) {

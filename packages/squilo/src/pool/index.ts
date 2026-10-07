@@ -1,4 +1,5 @@
-import { type config, ConnectionPool, Transaction } from 'mssql';
+import type { config, ConnectionPool, Transaction } from 'mssql';
+import mssql from 'mssql';
 
 export interface TransactionWrapper extends Transaction, AsyncDisposable {
     commit$: () => Promise<void>;
@@ -60,7 +61,7 @@ export function Pool(poolConfig: config): Pool {
             }
 
             if (!(database in POOL)) {
-                const pool = new ConnectionPool(config);
+                const pool = new mssql.ConnectionPool(config);
                 const close = pool.close.bind(pool);
 
                 pool.close = async () => {

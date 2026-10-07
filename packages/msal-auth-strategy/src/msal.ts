@@ -10,9 +10,10 @@ import {
     type TokenCacheContext,
 } from "@azure/msal-node";
 
-import * as path from "path";
+import { readFile, writeFile } from "node:fs/promises";
+import * as path from "node:path";
 import type { AuthStrategy, ServerConfig } from "squilo";
-import { cwd } from "process";
+import { cwd } from "node:process";
 
 const SCOPES = ["https://database.windows.net//.default"];
 
@@ -21,10 +22,10 @@ const cacheAccess = (hash: string) => {
 
     const before = async (cacheContext: TokenCacheContext) => {
         try {
-            const cacheFile = await Bun.file(cacheFilePath).text();
+            const cacheFile = await readFile(cacheFilePath, "utf8");
             cacheContext.tokenCache.deserialize(cacheFile);
         } catch (err) {
-            await Bun.write(cacheFilePath, "");
+            await writeFile(cacheFilePath, "");
             cacheContext.tokenCache.deserialize("");
         }
     };
@@ -32,7 +33,7 @@ const cacheAccess = (hash: string) => {
     const after = async (cacheContext: TokenCacheContext) => {
         if (cacheContext.cacheHasChanged) {
             try {
-                await Bun.write(cacheFilePath, cacheContext.tokenCache.serialize());
+                await writeFile(cacheFilePath, cacheContext.tokenCache.serialize());
             } catch (err) {
                 console.error(err);
             }
