@@ -61,7 +61,8 @@ skills:
     package: 'packages/squilo'
     description: >
       Connect to single DB, array of DBs with concurrency limit, or dynamically discover
-      databases via query with Database column. Returns ConnectionChain for Execute or Retrieve.
+      databases via query with Database column. ExecutionOptions add retry, timeout and
+      AbortSignal cancellation. Returns ConnectionChain for Execute or Retrieve.
     requires:
       - setup-authentication
     sources:
@@ -75,7 +76,7 @@ skills:
     path: 'skills/retrieve-data/SKILL.md'
     package: 'packages/squilo'
     description: >
-      Query data across databases with Retrieve(). Streaming results via TransformStream.
+      Query data across databases with Retrieve(). Streaming results via ReadableStream.
       ConnectionPoolWrapper with AsyncDisposable, transaction$ with commit$ for atomicity.
       Must end chain with Output() or Transform().Output() to consume the stream.
     requires:
@@ -144,7 +145,7 @@ skills:
     package: 'packages/squilo'
     description: >
       Understand SAFE_GUARD env var (default=1), ExecutionError[] tuple returns,
-      SafeGuardError halting behavior, mssql-specific error fields (code, number, state,
+      SAFE_GUARD halting behavior, TimeoutError/AbortError/UnfinishedWorkError, mssql-specific error fields (code, number, state,
       lineNumber). Errors returned not thrown. Check array length after every operation.
     requires: []
     sources:

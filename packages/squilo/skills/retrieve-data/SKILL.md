@@ -2,7 +2,7 @@
 name: retrieve-data
 description: >
   Query data across multiple SQL Server databases with Retrieve(). Streaming
-  results via TransformStream. ConnectionPoolWrapper with AsyncDisposable
+  results via ReadableStream. ConnectionPoolWrapper with AsyncDisposable
   auto-closes connections. Transaction support with commit$() for atomicity.
   Must end chain with Output() or Transform().Output() to consume stream.
 type: core
@@ -173,7 +173,7 @@ console.log(users);
 process.exit(0);
 ```
 
-`.Retrieve()` creates a `TransformStream`. The stream must be consumed by `.Output()` or `.Transform().Output()`.
+`.Retrieve()` returns a lazy `ReadableStream` of results: nothing runs until `.Output()` (or `.Transform().Output()`) consumes it.
 
 Source: packages/squilo/src/pipes/retrieve/index.ts
 
@@ -316,7 +316,7 @@ const [errors, result] = await Server({
 	.Output(MergeOutputStrategy());
 ```
 
-`Retrieve` should return raw query results. Move expensive operations (file I/O, API calls, heavy computation) to `.Transform()`. The `TransformStream` runs after all database connections are released.
+`Retrieve` should return raw query results. Move expensive operations (file I/O, API calls, heavy computation) to `.Transform()`. Each database's connection is released before its result reaches `.Transform()`.
 
 Source: packages/squilo/src/pipes/retrieve/index.ts
 

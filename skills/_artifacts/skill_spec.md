@@ -78,8 +78,9 @@ Server(config) → .Auth(strategy) → .Connect(db|dbs|query) → .Retrieve(fn) 
 
 **Key APIs:**
 - `.Connect(database: string)` — single database
-- `.Connect(databases: string[], concurrent?: number)` — multiple databases with optional concurrency limit
-- `.Connect<T extends DatabaseObject>(options: ConnectionOptions, concurrent?: number)` — dynamic discovery via query
+- `.Connect(databases: string[], options?: number | ExecutionOptions)` — multiple databases; a number is the concurrency limit
+- `.Connect<T extends DatabaseObject>(query: ConnectionOptions, options?: number | ExecutionOptions)` — dynamic discovery via query
+- `ExecutionOptions`: `{ concurrent?, retry?, timeout?, signal? }` — sliding-window concurrency, retry of transient errors (`IsTransientError`), per-database timeout, `AbortSignal` cancellation
 
 **ConnectionOptions:**
 ```ts
@@ -117,7 +118,7 @@ Retrieve(
 **Important patterns:**
 - `ConnectionPoolWrapper` implements `AsyncDisposable` — use `await using` for auto-cleanup
 - `ConnectionPoolWrapper.transaction$()` returns a `TransactionWrapper` — call `commit$()` to commit, else auto-rollback on disposal
-- Results stream through a `TransformStream` — must be consumed via `.Output()` or `.Transform() → .Output()`
+- Results stream through a lazy `ReadableStream` — nothing runs until `.Output()` or `.Transform() → .Output()` consumes it
 
 **Wrong / Correct:**
 | ❌ Wrong | ✅ Correct |
@@ -243,14 +244,13 @@ Transform(
 - Behavior: Limits how many database connection/query errors trigger before halting further connections
 - Setting `SAFE_GUARD=0` disables the guard entirely
 - Invalid values (e.g., `"invalid"`) parse to `NaN` — effectively disables guard
-- Already-queued databases still execute even after SAFE_GUARD triggers
+- In-flight databases still finish after SAFE_GUARD triggers; databases not yet started are skipped
 
 **Error flow:**
-1. Runner catches errors per-database
-2. Errors are tracked; SAFE_GUARD checked after each error
-3. If SAFE_GUARD reached, `SafeGuardError` thrown (silently caught by runner)
-4. Remaining databases in the current batch finish, no new batches start
-5. Errors returned in `ExecutionError[]` tuple — NOT thrown
+1. Runner turns each database's failure into an `error` result (connection, query, `TimeoutError`, `AbortError`, `UnfinishedWorkError`); with `retry`, only the final failure counts
+2. The first `min(SAFE_GUARD, concurrent)` databases run one at a time, so a systematic failure halts the run before fanning out
+3. Once SAFE_GUARD errors are reached, databases not yet started are skipped (no result emitted); in-flight ones finish
+4. Errors returned in `ExecutionError[]` tuple — NOT thrown (only a failing discovery query rejects the whole operation)
 
 **ExecutionError shape:**
 ```ts
