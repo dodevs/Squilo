@@ -15,19 +15,19 @@
     },
     "packages/msal-auth-strategy": {
       "name": "@squilo/msal-auth-strategy",
-      "version": "0.8.0-beta.1",
+      "version": "0.7.0-beta.3",
       "dependencies": {
         "@azure/msal-node": "^3.8.0",
         "open": "^10.2.0",
       },
       "peerDependencies": {
-        "squilo": "workspace:^0.8.0-beta.1",
+        "squilo": "workspace:^0.7.0-beta.3",
         "typescript": "^5.9.3",
       },
     },
     "packages/squilo": {
       "name": "squilo",
-      "version": "0.8.0-beta.1",
+      "version": "0.7.0-beta.3",
       "dependencies": {
         "@types/mssql": "^9.1.8",
         "cli-progress": "^3.12.0",
@@ -47,12 +47,12 @@
     },
     "packages/xls-output-strategy": {
       "name": "@squilo/xls-output-strategy",
-      "version": "0.8.0-beta.1",
+      "version": "0.7.0-beta.3",
       "dependencies": {
         "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
       },
       "peerDependencies": {
-        "squilo": "workspace:^0.8.0-beta.1",
+        "squilo": "workspace:^0.7.0-beta.3",
         "typescript": "^5.9.3",
       },
     },

@@ -4,7 +4,7 @@
 
 library:
   name: squilo
-  version: '0.8.0-beta.1'
+  version: '0.7.0-beta.3'
   repository: 'https://github.com/dodevs/Squilo'
   description: 'Bun-first TypeScript library for orchestrating SQL Server connections, authentication, and script execution across multiple databases via a fluent pipeline API.'
 

@@ -350,7 +350,7 @@ Output: `dist/index.js` (ESM) + `dist/index.d.ts` (declarations) per package.
 ### Package Publishing
 - All packages published to npm as public scoped/unscoped packages
 - npm tarball contents: `squilo` publishes `"files": ["dist", "skills"]`; the extension packages publish `"files": ["dist"]`
-- Versions are `0.8.0-beta.1` (pre-release)
+- Versions are `0.7.0-beta.3` (pre-release)
 - Extension packages have `squilo` as a workspace peer dependency
 
 ## Extension Packages
@@ -365,7 +365,7 @@ The `@tanstack/intent` skills `create-custom-auth-strategy` and `create-custom-o
 
 ### Extension Package Pattern
 Each extension package:
-1. Has `squilo` as a `peerDependency` (workspace:^0.8.0-beta.1)
+1. Has `squilo` as a `peerDependency` (workspace:^0.7.0-beta.3)
 2. Exports its strategy from a single `src/index.ts`
 3. Builds with `bunup` via the workspace config
 4. Publishes to npm under the `@squilo/` scope

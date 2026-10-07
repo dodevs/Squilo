@@ -7,7 +7,7 @@ description: >
   Must end chain with Output() or Transform().Output() to consume stream.
 type: core
 library: squilo
-library_version: "0.8.0-beta.1"
+library_version: "0.7.0-beta.3"
 sources:
   - "dodevs/Squilo:packages/squilo/src/pipes/retrieve/index.ts"
   - "dodevs/Squilo:packages/squilo/src/pipes/retrieve/types.ts"

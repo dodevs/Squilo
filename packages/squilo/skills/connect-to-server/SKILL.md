@@ -6,7 +6,7 @@ description: >
   Use when an agent needs to set up a SQL Server connection before authentication.
 type: core
 library: squilo
-library_version: "0.8.0-beta.1"
+library_version: "0.7.0-beta.3"
 sources:
   - "dodevs/Squilo:packages/squilo/src/pipes/server/index.ts"
   - "dodevs/Squilo:packages/squilo/src/pipes/server/types.ts"
