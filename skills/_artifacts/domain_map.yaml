@@ -106,17 +106,17 @@ monorepo-cross-package:
 
 # High-priority failure modes that affect multiple skills.
 global-failure-modes:
-  - id: script-hang
-    description: Scripts hang without process.exit() because pools/progress bars keep the process alive.
-    affected_skills: [getting-started, generate-report, execute-updates, retrieve-data]
-
   - id: safe-guard-confusion
     description: Developers misunderstand SAFE_GUARD as an error limit that stops everything.
     affected_skills: [handle-errors, execute-updates, retrieve-data]
     detail: >
-      SAFE_GUARD (default=1) limits how many DB connection errors trigger
-      before halting further connections. Already-queued DBs still execute.
-      Errors are returned in the tuple — not thrown.
+      SAFE_GUARD (default=1; 0 or invalid disables) limits how many database
+      errors occur before halting. The first min(SAFE_GUARD, concurrent)
+      databases run one at a time; after SAFE_GUARD errors, databases not yet
+      started are skipped (no result emitted) and in-flight ones finish. With
+      retry, only the final failure counts. Per-database errors are returned
+      as data (Execute array or Output tuple), not thrown; only a failing
+      discovery query rejects Execute()/Output().
 
   - id: monorepo-import-mismatch
     description: Agents import from wrong package or use outdated subpath imports.

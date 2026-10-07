@@ -2,9 +2,8 @@
 name: getting-started
 description: >
   Interactive onboarding for Squilo: configure Server, Auth, Connect, Retrieve,
-  Output. Generate first working script across multiple databases. Remind about
-  process.exit() to prevent script hang. Install squilo and extension packages
-  (msal-auth-strategy, xls-output-strategy).
+  Output. Generate first working script across multiple databases. Install
+  squilo and extension packages (msal-auth-strategy, xls-output-strategy).
 type: lifecycle
 library: squilo
 library_version: "0.8.0-beta.1"
@@ -59,7 +58,6 @@ if (errors.length > 0) {
 }
 
 console.log(`Found ${users.length} active users`);
-process.exit(0); // Required — pools keep process alive
 ```
 
 ### Query across multiple databases
@@ -73,14 +71,14 @@ const [errors, allUsers] = await Server({
 	options: { encrypt: false }
 }).Auth(UserAndPassword("sa", "your-password"))
 	.Connect(["TenantDB1", "TenantDB2", "TenantDB3"], 2) // 2 concurrent
-	.Retrieve(async (conn, db) => {
-		const result = await conn.query`SELECT * FROM ${db}.dbo.Users`;
+	.Retrieve(async (conn) => {
+		// conn is already connected to the current database
+		const result = await conn.query`SELECT * FROM dbo.Users`;
 		return result.recordset;
 	})
 	.Output(MergeOutputStrategy());
 
 console.log(`Total users: ${allUsers.length}`);
-process.exit(0);
 ```
 
 ### Discover databases dynamically
@@ -93,71 +91,20 @@ const [errors, clients] = await Server({
 	port: 1433,
 	options: { encrypt: false }
 }).Auth(UserAndPassword("sa", "your-password"))
-	.Connect({
+	.Connect<{ Database: string; ClientName: string }>({
 		database: "ClientsManager",
-		query: `SELECT Database, ClientName FROM ActiveClients WHERE Region = 'US'`
+		query: `SELECT DatabaseName AS [Database], ClientName FROM ActiveClients WHERE Region = 'US'`
 	})
 	.Retrieve(async (conn, db) => {
-		const result = await conn.query`
-			SELECT '${db.ClientName}' AS Client, * FROM ${db.Database}.dbo.Users
-		`;
-		return result.recordset;
+		const result = await conn.query`SELECT * FROM dbo.Users`;
+		return result.recordset.map((user) => ({ Client: db.ClientName, ...user }));
 	})
 	.Output(MergeOutputStrategy());
 
 console.log(clients);
-process.exit(0);
 ```
 
 ## Common Mistakes
-
-### CRITICAL Script hangs without process.exit()
-
-Wrong:
-
-```ts
-import { Server, UserAndPassword, MergeOutputStrategy } from "squilo";
-
-const [errors, users] = await Server({
-	server: "localhost",
-	port: 1433,
-	options: { encrypt: false }
-}).Auth(UserAndPassword("sa", "password"))
-	.Connect("MyDB")
-	.Retrieve(async (conn) => {
-		const result = await conn.query`SELECT * FROM Users`;
-		return result.recordset;
-	})
-	.Output(MergeOutputStrategy());
-
-console.log(users);
-// Script hangs here — no exit, pools and progress bar keep event loop alive
-```
-
-Correct:
-
-```ts
-import { Server, UserAndPassword, MergeOutputStrategy } from "squilo";
-
-const [errors, users] = await Server({
-	server: "localhost",
-	port: 1433,
-	options: { encrypt: false }
-}).Auth(UserAndPassword("sa", "password"))
-	.Connect("MyDB")
-	.Retrieve(async (conn) => {
-		const result = await conn.query`SELECT * FROM Users`;
-		return result.recordset;
-	})
-	.Output(MergeOutputStrategy());
-
-console.log(users);
-process.exit(0); // Required for standalone scripts
-```
-
-Connection pools and `cli-progress` SingleBar keep the Node.js/Bun event loop alive. Always call `process.exit(0)` at the end of standalone scripts. Not needed in web servers or long-running processes.
-
-Source: packages/squilo/src/pipes/shared/runner/index.ts
 
 ### HIGH Wrong import path for extension packages
 
@@ -225,7 +172,7 @@ if (errors.length > 0) {
 }
 ```
 
-`.Output()` always returns a tuple `[ExecutionError[], result]`. Errors are in the first element, not thrown.
+`.Output()` returns whatever the strategy returns. `MergeOutputStrategy`, `JsonOutputStrategy` and `XlsOutputStrategy` return a tuple `[ExecutionError[], result]` by default; errors are in the first element, not thrown. `ConsoleOutputStrategy` returns `void`, and `JsonOutputStrategy`/`XlsOutputStrategy` with `includeErrors = true` return only the result (errors are written into the file).
 
 Source: packages/squilo/src/pipes/output/strategies/merge.ts
 

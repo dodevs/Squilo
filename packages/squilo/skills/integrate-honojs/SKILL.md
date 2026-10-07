@@ -44,8 +44,8 @@ app.get("/api/users", async (c) => {
 		process.env.DB_PASSWORD!
 	))
 		.Connect(["TenantDB1", "TenantDB2"])
-		.Retrieve(async (conn, db) => {
-			const result = await conn.query`SELECT * FROM ${db}.dbo.Users`;
+		.Retrieve(async (conn) => {
+			const result = await conn.query`SELECT * FROM dbo.Users`;
 			return result.recordset;
 		})
 		.Output(MergeOutputStrategy());
@@ -80,8 +80,8 @@ app.get("/api/stream-logs", async (c) => {
 				process.env.DB_PASSWORD!
 			))
 				.Connect(["LogDB1", "LogDB2"])
-				.Retrieve(async (conn, db) => {
-					const result = await conn.query`SELECT * FROM ${db}.dbo.Logs`;
+				.Retrieve(async (conn) => {
+					const result = await conn.query`SELECT * FROM dbo.Logs`;
 					return result.recordset;
 				})
 				.Output(async (result) => {
@@ -176,44 +176,6 @@ app.get("/api/users", async (c) => {
 Hono route handlers that call async Squilo pipelines must be declared `async` and must `await` the pipeline before constructing the `Response`.
 
 Source: packages/squilo/README.md
-
-### MEDIUM Using process.exit() in Hono route
-
-Wrong:
-
-```ts
-import { Hono } from "hono";
-import { Server, UserAndPassword, MergeOutputStrategy } from "squilo";
-
-app.get("/api/users", async (c) => {
-	const [errors, users] = await Server({...})
-		... // pipeline
-		.Output(MergeOutputStrategy());
-
-	process.exit(0); // Kills the Hono server
-	return c.json(users);
-});
-```
-
-Correct:
-
-```ts
-import { Hono } from "hono";
-import { Server, UserAndPassword, MergeOutputStrategy } from "squilo";
-
-app.get("/api/users", async (c) => {
-	const [errors, users] = await Server({...})
-		... // pipeline
-		.Output(MergeOutputStrategy());
-
-	// No process.exit() — Hono is a long-running server
-	return c.json(users);
-});
-```
-
-`process.exit()` is for standalone scripts. In a Hono server, it terminates the entire process. Hono manages its own event loop — do not call `process.exit()` in route handlers.
-
-Source: packages/squilo/src/pipes/shared/runner/index.ts
 
 ### MEDIUM Not handling errors in route response
 

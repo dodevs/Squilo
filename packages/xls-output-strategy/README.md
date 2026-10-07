@@ -18,15 +18,16 @@ bun add squilo @squilo/xls-output-strategy
 
 ### Separate Sheets (Default)
 
-Each database gets its own sheet:
+Each database gets its own sheet, added in the order the databases finish (completion order):
 
 ```ts
 import { XlsOutputStrategy } from "@squilo/xls-output-strategy";
 
 const [errors, filename] = await LocalServer
     .Connect(["DB1", "DB2"])
-    .Retrieve(async (conn, db) => {
-        return await conn.query`SELECT * FROM ${db}.Users`;
+    .Retrieve(async (conn) => {
+        const result = await conn.query`SELECT * FROM Users`;
+        return result.recordset;
     })
     .Output(XlsOutputStrategy());
 
@@ -40,8 +41,9 @@ All data merged into a single sheet with a `database` column:
 ```ts
 const [errors, filename] = await LocalServer
     .Connect(["DB1", "DB2"])
-    .Retrieve(async (conn, db) => {
-        return await conn.query`SELECT * FROM Users`;
+    .Retrieve(async (conn) => {
+        const result = await conn.query`SELECT * FROM Users`;
+        return result.recordset;
     })
     .Output(XlsOutputStrategy(true)); // combineSheets = true
 ```

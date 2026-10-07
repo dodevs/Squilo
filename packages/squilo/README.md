@@ -159,7 +159,8 @@ Squilo supports three ways to specify target databases:
 const singleDb = LocalServer.Connect("MyDatabase");
 const [errors, data] = await singleDb
     .Retrieve(async (conn) => {
-        return await conn.query`SELECT * FROM Users`;
+        const result = await conn.query`SELECT * FROM Users`;
+        return result.recordset;
     })
     .Output(MergeOutputStrategy());
 ```
@@ -169,19 +170,22 @@ const [errors, data] = await singleDb
 ```ts
 const databases = ["Client1", "Client2", "Client3"];
 
-// Process all databases (concurrent by default)
+// Process all databases (unbounded concurrency by default)
+// Each callback's connection already targets `db`, so queries need no database prefix
 const [errors, allData] = await LocalServer
     .Connect(databases)
     .Retrieve(async (conn, db) => {
-        return await conn.query`SELECT * FROM ${db}.Users`;
+        const result = await conn.query`SELECT * FROM Users`;
+        return result.recordset.map(user => ({ ...user, Database: db }));
     })
     .Output(MergeOutputStrategy());
 
-// Process with concurrency limit (e.g., 5 at a time)
+// Process with concurrency limit (sliding window of 5)
 const [errors, limitedData] = await LocalServer
     .Connect(databases, 5)
-    .Retrieve(async (conn, db) => {
-        return await conn.query`SELECT * FROM ${db}.Users`;
+    .Retrieve(async (conn) => {
+        const result = await conn.query`SELECT * FROM Users`;
+        return result.recordset;
     })
     .Output(MergeOutputStrategy());
 ```
@@ -220,6 +224,9 @@ const [errors, data] = await LocalServer
     })
     .Output(MergeOutputStrategy());
 ```
+
+The discovery query runs on its own connection, which is closed once the query returns. Unlike per-database errors,
+a failing discovery query is not returned as data: it rejects the `Execute()` / `Output()` promise.
 
 ### Execution Options: Retry, Timeout and Cancellation
 
@@ -328,7 +335,7 @@ const [errors, users] = await LocalServer
 
 ### Using Transactions (CTE, TVP, Complex Operations)
 
-Wrap operations in a transaction for atomicity using the `await using` pattern. Transactions auto-rollback if `commit$()` is not called:
+Wrap operations in a transaction for atomicity using the `await using` pattern. Transactions roll back on dispose unless `commit$()` succeeded (a failing `commit$()` also rolls back). A deadlock victim, already rolled back by SQL Server, is not rolled back again, so error 1205 surfaces as-is:
 
 ```ts
 import { Table, type Request } from "mssql";
@@ -360,9 +367,10 @@ const [errors, summary] = await LocalServer
             .input('Users', tvp)
             .query`SELECT * FROM ProcessUsers(@Users)`;
 
+        const details = `Processed ${result1.recordset[0]?.TotalActive} users`;
         await request.query`
             INSERT INTO AuditLog (Action, Details)
-            VALUES ('MonthlyActiveCalc', 'Processed ${result1.recordset[0]?.TotalActive} users')
+            VALUES ('MonthlyActiveCalc', ${details})
         `;
 
         await transaction.commit$();
@@ -401,7 +409,7 @@ const [errors, users] = await LocalServer
 
 ### Complex Transform: Use the Transform Pipe
 
-Use `Transform` when you need to perform **expensive operations that don't require a database connection**. The Transform pipe releases DB connections immediately.
+Use `Transform` when you need to perform **expensive operations that don't require a database connection**. The Transform pipe releases DB connections immediately: each database's connection is released before its result is emitted. The transform function runs once per database result with that database's data only; errored results bypass it.
 
 **When to use Transform:**
 - ✅ External API calls (geolocation, CRM lookup)
@@ -419,9 +427,10 @@ Use `Transform` when you need to perform **expensive operations that don't requi
 const [errors, enrichedUsers] = await LocalServer
     .Connect("UsersDB")
     .Retrieve(async (connection) => {
-        return await connection.query`
+        const result = await connection.query`
             SELECT Id, Email, CountryCode FROM Users WHERE Active = 1
         `;
+        return result.recordset;
     })
     .Transform(async (users) => {
         const enriched = await Promise.allSettled(
@@ -449,9 +458,10 @@ const [errors, enrichedUsers] = await LocalServer
 const [_, usersWithAvatars] = await LocalServer
     .Connect("UsersDB")
     .Retrieve(async (connection) => {
-        return await connection.query<{ Id: number; AvatarPath: string }>`
+        const result = await connection.query<{ Id: number; AvatarPath: string }>`
             SELECT Id, AvatarPath FROM Users WHERE HasAvatar = 1
         `;
+        return result.recordset;
     })
     .Transform(async (users) => {
         const processed = await Promise.all(
@@ -526,10 +536,11 @@ const errors = await LocalServer
             WHERE LastLogin > DATEADD(day, -30, GETDATE())
         `;
         
+        // Interpolated values become bound parameters: no quotes around ${database}
         await connection.query`
             UPDATE Settings 
             SET LastMaintenance = GETDATE() 
-            WHERE DatabaseName = '${database}'
+            WHERE DatabaseName = ${database}
         `;
     });
 
@@ -557,7 +568,8 @@ import { MergeOutputStrategy } from "squilo";
 const [errors, mergedData] = await LocalServer
     .Connect(["DB1", "DB2", "DB3"])
     .Retrieve(async (conn) => {
-        return await conn.query`SELECT * FROM Users WHERE Active = 1`;
+        const result = await conn.query`SELECT * FROM Users WHERE Active = 1`;
+        return result.recordset;
     })
     .Output(MergeOutputStrategy());
 ```
@@ -572,12 +584,10 @@ import { JsonOutputStrategy } from "squilo";
 const [errors, filename] = await LocalServer
     .Connect("UsersDB")
     .Retrieve(async (conn) => {
-        return await conn.query`SELECT * FROM Users`;
+        const result = await conn.query`SELECT * FROM Users`;
+        return result.recordset;
     })
-    .Output(JsonOutputStrategy({
-        includeEmpty: true,
-        includeErrors: false
-    }));
+    .Output(JsonOutputStrategy(true, false)); // (includeEmpty = true, includeErrors = false)
 ```
 
 ### ConsoleOutputStrategy (Debugging)
@@ -590,7 +600,8 @@ import { ConsoleOutputStrategy } from "squilo";
 await LocalServer
     .Connect("TestDB")
     .Retrieve(async (conn) => {
-        return await conn.query`SELECT TOP 5 * FROM Users`;
+        const result = await conn.query`SELECT TOP 5 * FROM Users`;
+        return result.recordset;
     })
     .Output(ConsoleOutputStrategy());
 ```
@@ -627,7 +638,7 @@ const CsvOutputStrategy = <T, TData>(): OutputStrategy<T, TData, string> => {
 
 const csvData = await LocalServer
     .Connect("UsersDB")
-    .Retrieve(async (conn) => conn.query`SELECT * FROM Users`)
+    .Retrieve(async (conn) => (await conn.query`SELECT * FROM Users`).recordset)
     .Output(CsvOutputStrategy());
 ```
 
@@ -666,7 +677,7 @@ const [errors, result] = await chain.Output(JsonOutputStrategy());
 
 **With includeErrors: true:**
 ```ts
-const filename = await chain.Output(JsonOutputStrategy({ includeErrors: true }));
+const filename = await chain.Output(JsonOutputStrategy(true, true)); // (includeEmpty, includeErrors)
 // Type: string (errors embedded in output file)
 ```
 
@@ -692,7 +703,7 @@ const [_, users1] = await LocalServer
 // Transform (releases DB connection early)
 const [_, users2] = await LocalServer
     .Connect("DB")
-    .Retrieve(async (conn) => conn.query`SELECT * FROM Users`)
+    .Retrieve(async (conn) => (await conn.query`SELECT * FROM Users`).recordset)
     .Transform(users => users.map(u => ({ ...u, Email: u.Email.toLowerCase() })))
     .Output(MergeOutputStrategy());
 ```
@@ -723,7 +734,10 @@ interface ServerConfig {
 
 ### Environment Variables
 
-- **`SAFE_GUARD`** — Maximum number of database failures to tolerate before skipping all remaining databases (default: `1`):
+- **`SAFE_GUARD`** — Number of database failures after which databases not yet started are skipped (default: `1`; `0` or an
+  invalid value disables it). Skipped databases emit no result; in-flight ones finish. The first `min(SAFE_GUARD, concurrent)`
+  databases run one at a time, so an error that would hit every database stops the run early. With `retry`, only a database's
+  final failure counts:
   ```bash
   SAFE_GUARD=5 bun run scripts/process-clients.ts
   ```
@@ -750,7 +764,9 @@ src/
 │   ├── execute/          # Data modification operations
 │   ├── transform/        # Post-processing pipeline
 │   ├── output/           # Output pipe + built-in strategies
-│   └── shared/runner/    # Connection execution engine
+│   └── shared/
+│       ├── progress.ts   # Progress bar (silent when NODE_ENV=test)
+│       └── runner/       # Execution engine (index.ts) + IsTransientError (transient.ts)
 ```
 
 ### Type Exports
@@ -762,14 +778,18 @@ import type { OutputStrategy, ExecutionResult, ExecutionError } from "squilo";
 import type { ExecutionOptions, RetryOptions, DurationInput } from "squilo";
 import { IsTransientError } from "squilo";
 
-// mssql re-exported as SQL
-import { SQL, type ConnectionPool, type Transaction, type Request } from "squilo";
+// mssql re-exported as SQL (SQL.ConnectionPool, SQL.Transaction, SQL.Request, SQL.Table, ...)
+import { SQL } from "squilo";
 ```
 
 ## Testing
 
+Run tests from the repository root (running inside `packages/squilo` skips the root `bunfig.toml`):
+
 ```bash
-bun test
+bun run test                                    # whole suite (SQL Server specs need Docker)
+bun test ./packages/squilo/test/connect.spec.ts # single spec
+bun run test:docker                             # suite inside a Linux Bun container, for hosts where Bun can't reach Docker (e.g. Windows)
 ```
 
 The `test/` directory contains comprehensive examples of:
@@ -779,7 +799,10 @@ The `test/` directory contains comprehensive examples of:
 - Transform pipeline usage
 - All output strategies
 
-Tests use [testcontainers](https://testcontainers.com/) with an Azure SQL Edge Docker image.
+Tests use [testcontainers](https://testcontainers.com/) with an Azure SQL Edge Docker image. Container specs call
+`UseSqlServer(setup?)` from `test/container/container.ts`, which starts the container in `beforeAll`, waits until it
+accepts logins and stops it in `afterAll`. `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts` and the output strategy
+specs don't need Docker.
 
 ## Related Packages
 

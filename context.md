@@ -22,7 +22,8 @@ Squilo/
 ├── biome.json                   # Biome config: tabs, double quotes
 ├── tsconfig.json                # Root TS: strict, noEmit, isolatedDeclarations, noUncheckedIndexedAccess
 ├── bun.lock / bunfig.toml       # Bun package manager
-├── README.md / context.md / progress.md
+├── README.md / AGENTS.md / context.md
+├── scripts/test-docker.ts       # `bun run test:docker`: runs the suite in a Linux Bun container
 │
 ├── packages/
 │   ├── squilo/                  # Core pipeline + built-in strategies (published as "squilo", v0.8.0-beta.1)
@@ -58,7 +59,7 @@ The root `package.json` is private with `workspaces: ["packages/*"]`. Three pack
 
 | Package | Published as | Role | Key dependency |
 |---|---|---|---|
-| `packages/squilo` | `squilo` | Core pipeline + SQL auth + built-in output strategies | `mssql`, `cli-progress` |
+| `packages/squilo` | `squilo` | Core pipeline + SQL auth + built-in output strategies | `mssql`, `cli-progress`, `effect` (internal runtime) |
 | `packages/msal-auth-strategy` | `@squilo/msal-auth-strategy` | Azure AD (Entra ID) interactive/silent auth | `@azure/msal-node`, `open` |
 | `packages/xls-output-strategy` | `@squilo/xls-output-strategy` | Excel `.xlsx` output with separate or combined sheets | `xlsx` (SheetJS CDN tarball) |
 
@@ -84,7 +85,7 @@ Each step returns a constrained chain object that only exposes the next valid me
 |---|---|---|---|---|
 | `Server(config)` | `squilo` | `ServerConfig` (mssql config minus auth) | `ServerChain` | `.Auth(strategy)` |
 | `.Auth(strategy)` | built into ServerChain | `AuthStrategy` function | `AuthenticationChain` | `.Connect(db/dbs/query)` |
-| `.Connect(db)` | built into AuthenticationChain | `string`, `string[]`, or `ConnectionOptions` | `ConnectionChain<T>` | `.Execute(fn)` or `.Retrieve(fn)` |
+| `.Connect(db, options?)` | built into AuthenticationChain | `string`, `string[]`, or `ConnectionOptions`; options: `ExecutionOptions` (or a concurrency `number` for `string[]` / `ConnectionOptions`) | `ConnectionChain<T>` | `.Execute(fn)` or `.Retrieve(fn)` |
 | `.Retrieve(fn)` | built into ConnectionChain | callback `(ConnectionPoolWrapper, T) => Promise<TReturn>` | `RetrieveChain<T, TReturn>` | `.Transform(fn)` or `.Output(strategy)` |
 | `.Execute(fn)` | built into ConnectionChain | callback `(ConnectionPoolWrapper, T) => Promise<void>` | `Promise<ExecutionError<T>[]>` | *(terminal)* |
 | `.Transform(fn)` | built into RetrieveChain | `TransformFunction<TInput, TOutput>` | `TransformChain<T, TOutput>` | `.Output(strategy)` |
@@ -99,12 +100,21 @@ type ServerChain = { Auth(strategy: AuthStrategy): AuthenticationChain; }
 
 // packages/squilo/src/pipes/auth/types.ts
 type AuthenticationChain = {
-    Connect(database: string): ConnectionChain<string>;
-    Connect(databases: string[], concurrent?: number): ConnectionChain<string[]>;
-    Connect<T extends DatabaseObject>(options: ConnectionOptions, concurrent?: number): ConnectionChain<T>;
+    Connect(database: string, options?: ExecutionOptions): ConnectionChain<string>;
+    Connect(databases: string[], options?: number | ExecutionOptions): ConnectionChain<string>; // callback gets one database
+    Connect<T extends DatabaseObject>(query: ConnectionOptions, options?: number | ExecutionOptions): ConnectionChain<T>;
 }
 
 // packages/squilo/src/pipes/connect/types.ts
+type DurationInput = number | `${number} ${"milli" | "millis" | "second" | "seconds" | "minute" | "minutes" | "hour" | "hours"}`;
+type RetryOptions = { times: number; delay?: DurationInput; while?: (error: ErrorType) => boolean };
+type ExecutionOptions = {
+    concurrent?: number;            // a plain number passed to Connect means this
+    retry?: number | RetryOptions;
+    timeout?: DurationInput;
+    signal?: AbortSignal;
+}
+
 type ConnectionChain<T> = {
     Execute(fn: (conn: ConnectionPoolWrapper, database: T) => Promise<void>): Promise<ExecutionError<T>[]>;
     Retrieve<TResult>(fn: (conn: ConnectionPoolWrapper, database: T) => Promise<TResult>): RetrieveChain<T, TResult>;
@@ -155,7 +165,7 @@ The Pool is created once in `Auth()` and shared across all `Connect()` calls —
 
 `ConnectionPoolWrapper` wraps `ConnectionPool` and implements `Symbol.asyncDispose`. Used with `await using` for auto-close. Adds `transaction$()` method.
 
-`TransactionWrapper` wraps `Transaction` and implements `Symbol.asyncDispose`. **Auto-rolls back** on disposal unless `commit$()` was called first. Commitment is tracked via a boolean flag:
+`TransactionWrapper` wraps `Transaction` and implements `Symbol.asyncDispose`. **Auto-rolls back** on disposal unless `commit$()` succeeded; a failing `commit$()` leaves the flag unset, so the transaction is rolled back. A deadlock victim (already aborted by SQL Server, mssql sets `_aborted`) is not rolled back again, so error 1205 surfaces as-is instead of a `SuppressedError`. Both wrappers extend the mssql object in place (`Object.assign`), so mssql's own state updates stay visible:
 
 ```ts
 export interface ConnectionPoolWrapper extends ConnectionPool, AsyncDisposable {
@@ -163,35 +173,41 @@ export interface ConnectionPoolWrapper extends ConnectionPool, AsyncDisposable {
 }
 
 // [Symbol.asyncDispose] on ConnectionPoolWrapper → pool.close()
-// [Symbol.asyncDispose] on TransactionWrapper → rollback() if !committed, else no-op
+// [Symbol.asyncDispose] on TransactionWrapper → rollback() if !committed and not aborted by SQL Server, else no-op
 ```
+
+Errors while closing a connection are ignored.
 
 ### 3. Streaming Architecture
 
-`Retrieve` creates a `TransformStream` and writes `ExecutionResult` chunks as they arrive. The `Transform` pipe inserts another `TransformStream` into the pipeline via `pipeThrough()`. `Output` consumes the final `ReadableStream`.
+`Retrieve` is **lazy**: nothing runs until `Output` consumes it. It exposes the Runner's Effect `Stream` as a `ReadableStream` (`Stream.toReadableStream`) of `ExecutionResult` chunks in completion order. The `Transform` pipe inserts a `TransformStream` via `pipeThrough()`; it runs once per database result with that database's data only (errored results bypass it). `Output` consumes the final `ReadableStream`.
 
-This enables **early connection release**: database connections close as soon as data is fetched (via `await using` in the runner), before expensive Transform/Output work begins.
+This enables **early connection release**: each database's connection is released before its result is emitted, so expensive Transform/Output work never holds a connection.
 
 ```
-DB fetch → WriteChunk → ──── stream ──── → TransformStream → Output consumes
-                          (DB conn closed)   (transform work)   (write to file)
+Runner (per DB: acquire → fn → release) → result emitted → TransformStream → Output consumes
+                                          (DB conn closed)   (transform work)  (write to file)
 ```
 
-### 4. SAFE_GUARD (`packages/squilo/src/utils/load-env.ts`)
+### 4. SAFE_GUARD (`packages/squilo/src/utils/load-env.ts`, applied in `pipes/shared/runner/index.ts`)
 
-Environment variable `SAFE_GUARD` limits how many database errors trigger before halting further connections. Default: `1`. Setting to `0` disables. `NaN` (invalid parse) also disables.
+Environment variable `SAFE_GUARD` sets how many database errors trip the guard. Default: `1`. `0` or an invalid value (`NaN`) disables it.
 
-The runner (`packages/squilo/src/pipes/shared/runner/index.ts`) creates a closure with `errorsCount` and an `open` flag. When `errorsCount >= SAFE_GUARD`, `open = true`. Subsequent calls to `guard()` throw `SafeGuardError`, which is **silently caught** — no error propagates, execution simply stops.
+- The first `min(SAFE_GUARD, concurrent)` databases run one at a time, so an error that would hit every database trips the guard early.
+- Once `SAFE_GUARD` errors happened, databases not yet started are skipped and emit no result; in-flight ones finish.
+- With `retry`, only a database's final failure counts.
 
-```ts
-export class SafeGuardError extends Error {
-    constructor() { super(`Safe guard reached`); }
-}
-```
+There is no error class for this: skipped databases are simply absent from the results.
 
-### 5. Concurrency Control (`packages/squilo/src/pipes/connect/index.ts`)
+### 5. Concurrency, Retry, Timeout and Cancellation (`packages/squilo/src/pipes/shared/runner/index.ts`)
 
-The `connections()` factory returns a **generator function** that yields batches of `DatabaseConnection` objects. First batch respects `Math.min(concurrent, safe_guard)`. SAFE_GUARD can cause single-connection batches initially (when `safe_guard < concurrent`). For single-database connects, SAFE_GUARD=1 doesn't matter since there's only one DB — it will fail or succeed, and no further connections are attempted.
+`concurrent` defaults to unbounded. After the SAFE_GUARD warm-up, the remaining databases run through `Stream.mapEffect` with a sliding window (`unordered: true`): a new database starts as soon as any running one finishes.
+
+- `retry` re-runs the callback on a fresh connection with exponential backoff (default delay `200 millis`); by default only `IsTransientError` errors (`shared/runner/transient.ts`) are retried.
+- `timeout` fails the database with a `TimeoutError`; `signal` skips not-started databases and fails in-flight ones with an `AbortError`. Interrupted connections are force-closed (`ForceClose` in `pool/index.ts`), so SQL Server rolls back the open transaction.
+- A callback that returns while a connection is still busy (open transaction, un-awaited query) fails with an `UnfinishedWorkError`.
+
+All of these are returned as data (`{ database, error }`), not thrown.
 
 ### 6. Dynamic Database Discovery (`packages/squilo/src/pipes/connect/types.ts`)
 
@@ -205,7 +221,7 @@ type ConnectionOptions = {
 }
 ```
 
-Additional columns from the query become properties on `T`, accessible in Retrieve/Execute callbacks.
+Additional columns from the query become properties on `T`, accessible in Retrieve/Execute callbacks. The query runs on a connection to `database` that is closed once it returns (`pipes/connect/index.ts`). A failing discovery query is the one error not returned as data: it rejects `Execute()` / `Output()`.
 
 ---
 
@@ -232,9 +248,9 @@ packages/squilo/src/
     │       └── userAndPassword.ts    # SQL auth: UserAndPassword(user, pass)
     ├── connect/
     │   ├── index.ts                  # Connect(pool) — single DB, array, or discovery query
-    │   └── types.ts                  # ConnectionChain, DatabaseConnection, DatabaseObject, ConnectionOptions
+    │   └── types.ts                  # ConnectionChain, DatabaseObject, ConnectionOptions, ExecutionOptions, RetryOptions, DurationInput
     ├── retrieve/
-    │   ├── index.ts                  # Retrieve — streams results via TransformStream
+    │   ├── index.ts                  # Retrieve — Runner stream exposed as a ReadableStream
     │   └── types.ts                  # RetrieveChain (Transform | Output)
     ├── execute/
     │   └── index.ts                  # Execute — runs fn per DB, collects errors
@@ -251,13 +267,13 @@ packages/squilo/src/
     │       ├── console.ts            # ConsoleOutputStrategy — console.log each chunk
     │       ├── merge.spec.ts
     │       ├── json.spec.ts
-    │       ├── console.spec.ts
-    │       └── xls.spec.ts           # (Note: spec exists but strategy moved to @squilo/xls-output-strategy)
-    │   └── shared/
+    │       └── console.spec.ts
     └── shared/
+        ├── progress.ts               # Progress() — cli-progress bar, silent when NODE_ENV=test
         └── runner/
-            ├── index.ts              # Runner — per-DB execution with progress bar + SAFE_GUARD
-            └── types.ts              # RunnerOptions, ExecutionResult, ExecutionError, SafeGuardError
+            ├── index.ts              # Runner — Effect Stream: per-DB acquire/release, sliding-window concurrency, SAFE_GUARD, retry/timeout/abort
+            ├── transient.ts          # IsTransientError — default retry predicate
+            └── types.ts              # RunStream, RunnerFn, ExecutionResult, ExecutionError, ErrorType, Databases
 ```
 
 ### Extension package sources
@@ -285,12 +301,15 @@ export type { AuthStrategy } from "./pipes/auth/strategies/types";
 export type { ServerConfig } from "./pipes/server/types";
 export type { OutputStrategy } from "./pipes/output/strategies/types";
 export type { ExecutionResult, ExecutionError, ErrorType } from "./pipes/shared/runner/types";
-export type { DatabaseObject } from "./pipes/connect/types";
+export type { DatabaseObject, DurationInput, ExecutionOptions, RetryOptions } from "./pipes/connect/types";
 
 // Built-in strategies
 export { UserAndPassword } from "./pipes/auth/strategies";
 export { MergeOutputStrategy, ConsoleOutputStrategy, JsonOutputStrategy } from "./pipes/output/strategies";
+export { IsTransientError } from "./pipes/shared/runner/transient";
 ```
+
+`effect` is an internal runtime dependency: no public type references it.
 
 > **Note**: The old `squilo/auth` and `squilo/output` subpath exports were removed during the monorepo conversion. The previous `ActiveDirectoryAccessToken` (was in `packages/squilo/src/pipes/auth/strategies/msal.ts`) and `XlsOutputStrategy` (was in `packages/squilo/src/pipes/output/strategies/xls.ts`) were extracted into their own packages: `@squilo/msal-auth-strategy` and `@squilo/xls-output-strategy`.
 
@@ -302,7 +321,7 @@ export { MergeOutputStrategy, ConsoleOutputStrategy, JsonOutputStrategy } from "
 Returns `[ExecutionError<T>[], TMerged[]]`. Flat-merges all `data` arrays into one. Handles both `Array.isArray(data)` (spreads) and single values (pushes). Errors are collected separately.
 
 ### JsonOutputStrategy
-Returns `[ExecutionError<T>[], string]` (filename) by default. Configurable: `includeEmpty` (default `true`), `includeErrors` (default `false`). Writes using `Bun.file().writer()` with streaming JSON. Naming: `<script-name>-<timestamp>.json`.
+Returns `[ExecutionError<T>[], string]` (filename) by default. Positional booleans: `JsonOutputStrategy(includeEmpty = true, includeErrors = false)`; with `includeErrors: true` it returns just the filename. Writes using `Bun.file().writer()` with streaming JSON. Naming: `<script-name>-<timestamp>.json`.
 
 ### ConsoleOutputStrategy
 Returns `void`. Iterates the stream with `for await` and `console.log()`s each chunk.
@@ -353,7 +372,7 @@ type TransformFunction<TInput, TOutput> = (data: TInput) => TOutput | Promise<TO
 ```
 
 ### Progress bar
-Disabled when `Bun.env.NODE_ENV === 'test'`. Uses `cli-progress`'s `SingleBar` with format: `{bar} {percentage}% | {value}/{total} | {database}`. Created once per Retrieve/Execute pipeline via `Runner()`.
+Disabled when `Bun.env.NODE_ENV === 'test'`. Uses `cli-progress`'s `SingleBar` with format: `{bar} {percentage}% | {value}/{total} | {database}`. Created by `Progress()` in `packages/squilo/src/pipes/shared/progress.ts` each time a run stream starts.
 
 ---
 
@@ -366,6 +385,7 @@ Disabled when `Bun.env.NODE_ENV === 'test'`. Uses `cli-progress`'s `SingleBar` w
 | `mssql` | ^12.2.0 | SQL Server driver |
 | `@types/mssql` | ^9.1.8 | MSSQL types (prod dep) |
 | `cli-progress` | ^3.12.0 | Terminal progress bars |
+| `effect` | ^4.0.1 | Runner streams, retry/timeout/interruption (internal, not in public types) |
 
 ### Extensions
 
@@ -435,7 +455,8 @@ Skills reference source files via `sources` in frontmatter using the format `dod
 ### Test stack
 - **Runner**: `bun:test` (`describe`, `it`, `test`, `expect`, `beforeAll`, `afterAll`, `mock`)
 - **Container**: `testcontainers` with `mcr.microsoft.com/azure-sql-edge` Docker image
-- **Wait strategy**: `Wait.forLogMessage('Recovery is complete')`
+- **Wait strategy**: `Wait.forLogMessage('Recovery is complete')`, then polls until SQL Server accepts logins
+- **Lifecycle**: container specs call `UseSqlServer(setup?)` (`test/container/container.ts`): starts the container in `beforeAll` with hook timeout `SQL_SERVER_TIMEOUT` (bunfig's `timeout` only applies to tests), runs `setup`, stops it in `afterAll`
 - **Data**: `@faker-js/faker` for user generation (seed: 123)
 
 ### Test file structure
@@ -444,11 +465,14 @@ Skills reference source files via `sources` in frontmatter using the format `dod
 packages/squilo/test/
 ├── index.spec.ts                     # Integration: Retrieve + Execute across 5 DBs
 ├── connect.spec.ts                   # Connection overloads (single, array, concurrency, query discovery)
-├── connection.spec.ts                # ConnectionPoolWrapper + TransactionWrapper disposal tests
+├── connection.spec.ts                # ConnectionPoolWrapper + TransactionWrapper disposal, deadlock surfaced as-is
+├── runner.spec.ts                    # Runner with an in-memory Pool (no Docker): concurrency, SAFE_GUARD, discovery failure
+├── pool.spec.ts                      # TransactionWrapper with a fake Transaction (no Docker): failing commit$ rolls back
+├── transient.spec.ts                 # IsTransientError (no Docker)
 ├── transform.spec.ts                 # Transform pipe: async transform, property addition, value doubling
-├── error-handling.spec.ts            # SAFE_GUARD env var behavior (retrieve + execute)
+├── error-handling.spec.ts            # SAFE_GUARD behavior + timeout/abort/UnfinishedWorkError rolling back a real transaction
 └── container/
-    ├── container.ts                  # AzureSqlEdge testcontainer factory, SQL_PASSWORD, CONFIG helper
+    ├── container.ts                  # AzureSqlEdge factory, UseSqlServer, SQL_PASSWORD, SQL_SERVER_TIMEOUT, CONFIG helper
     ├── container.spec.ts             # Basic connectivity test
     └── setup/
         ├── databases.ts              # Creates 5 test DBs (TestDB1-5) + ClientsManager DB + Clients table
@@ -462,8 +486,8 @@ packages/xls-output-strategy/test/
 - `TestDB1`–`TestDB5`: Each has 10 faker-generated users (configurable via `quantity` option)
 - `ClientsManager`: Contains `Clients` table with `DatabaseName` column — used for discovery query tests
 - SA password: `YourStrong@Passw0rd`
-- Progress bars: disabled in test env (`Bun.env.NODE_ENV === 'test'` check in runner)
-- Output strategy specs (`merge.spec.ts`, `json.spec.ts`, `console.spec.ts`, `xls.spec.ts`): Use in-memory `ReadableStream` mocks (no DB needed)
+- Progress bars: disabled in test env (`Bun.env.NODE_ENV === 'test'` check in `pipes/shared/progress.ts`)
+- Docker-free specs: `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts`, and the output strategy specs (`merge.spec.ts`, `json.spec.ts`, `console.spec.ts`, `xls.spec.ts`), which use in-memory `ReadableStream` mocks
 
 ---
 
@@ -471,11 +495,14 @@ packages/xls-output-strategy/test/
 
 ```bash
 bun test              # Run all tests (requires Docker)
+bun run test:docker   # Run the suite in a Linux Bun container (hosts where Bun can't reach Docker, e.g. Windows)
 bun run build         # Build all 3 packages with bunup
 bun run test:watch    # Watch mode
 bun run test:debug    # Debug mode
 bun run format        # Biome format
 ```
+
+Run single specs from the root so the root `bunfig.toml` applies: `bun test ./packages/squilo/test/connect.spec.ts`.
 
 **Build output**: Each package's `dist/` contains ESM JS bundles + `.d.ts` declaration files with code splitting.
 
@@ -493,17 +520,19 @@ bun run format        # Biome format
 ## Recent Git History (key commits)
 
 ```
+849a68b chore: bump version to 0.8.0-beta.1
+a0d0071 refactor(runner): drop unused error classes, speculative paths and extra comments
+383c6ea docs(skills): describe the Effect runner and execution options
+b670cb1 fix(connect): close the discovery connection after the query
+8d4a0f1 build: add test:docker script for hosts where Bun can't reach Docker
+7dc2532 test: stabilize the SQL Server container suite
+a20bef8 fix(pool,runner): surface deadlocks as-is and stop hanging on open transactions
+cfd27c0 feat(connect): add retry, timeout and abort signal execution options
+ffba01e fix(pool): roll back when commit$ fails
+3ce3bb0 refactor(runner): run pipeline on Effect streams
+a919b98 fix(types): type Connect(string[]) callbacks with a single database
+036419a feat!: restructure into Bun workspace monorepo with 3 packages
 540a50c chore: bump version to 0.6.5
-7258014 test(xls-output): fix empty sheet test mock data
-c0f6372 docs: overhaul README with accurate API patterns and examples
-e923f5d refactor(pipes/connect): simplify connection chunking logic for clarity
-00e9826 build: update mssql from v11.0.1 to v12.2.0
-3a598c7 fix(xls): truncate sheet names to 31 characters
-040bdce fix(connect): pass database instance to Execute and Retrieve callbacks
-886437d refactor: replace transaction-based API with connection-based API
-c9835a2 test: add database indexes and configurable user quantity
-35c11ec feat: error handling per strategy and custom database query result
-61cf2cc chore: update dependencies and move @types/mssql to production
 ```
 
 > **Note**: The repo has been restructured from a single-package layout (`src/`, `test/`) to a monorepo (`packages/squilo/src/`, `packages/msal-auth-strategy/`, `packages/xls-output-strategy/`). The current version is `0.8.0-beta.1` across all packages. The older git history (pre-0.7.0) reflects the pre-monorepo structure.
@@ -512,7 +541,7 @@ c9835a2 test: add database indexes and configurable user quantity
 
 ## Common Anti-Patterns / Gotchas
 
-1. **Forgetting `process.exit(0)`**: Connection pools keep the Bun process alive. Standalone scripts must call `process.exit(0)` after completion.
+1. **Leaving a transaction open**: `const tx = await conn.transaction$()` without `await using` (or an un-awaited query) leaves the connection busy when the callback returns; that database fails with an `UnfinishedWorkError` and the connection is force-closed, rolling the transaction back.
 
 2. **Confusing `.Execute()` with `.Retrieve()`**: Execute is terminal (returns `Promise<ExecutionError[]>` directly), Retrieve is streaming (returns `RetrieveChain` that must be consumed with `.Output()` or `.Transform().Output()`).
 
@@ -526,4 +555,4 @@ c9835a2 test: add database indexes and configurable user quantity
 
 7. **Mutating server config in auth strategies**: Always return a new object (`{...config, user, password}`), never mutate the input config.
 
-8. **Not calling `commit$()` in transactions**: The `TransactionWrapper` auto-rolls back on `await using` disposal unless `commit$()` was explicitly called. Just doing `await transaction.commit()` (the base method) won't set the internal `committed` flag.
+8. **Not calling `commit$()` in transactions**: The `TransactionWrapper` auto-rolls back on `await using` disposal unless `commit$()` succeeded. Just doing `await transaction.commit()` (the base method) won't set the internal `committed` flag.

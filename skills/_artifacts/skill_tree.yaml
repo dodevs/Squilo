@@ -68,6 +68,8 @@ skills:
     sources:
       - 'dodevs/Squilo:packages/squilo/src/pipes/connect/index.ts'
       - 'dodevs/Squilo:packages/squilo/src/pipes/connect/types.ts'
+      - 'dodevs/Squilo:packages/squilo/src/pipes/shared/runner/index.ts'
+      - 'dodevs/Squilo:packages/squilo/src/pipes/shared/runner/transient.ts'
 
   - name: retrieve-data
     slug: retrieve-data
@@ -77,7 +79,7 @@ skills:
     package: 'packages/squilo'
     description: >
       Query data across databases with Retrieve(). Streaming results via ReadableStream.
-      ConnectionPoolWrapper with AsyncDisposable, transaction$ with commit$ for atomicity.
+      The runner opens and closes each database's connection; transaction$ with commit$ for atomicity.
       Must end chain with Output() or Transform().Output() to consume the stream.
     requires:
       - connect-to-databases
@@ -110,7 +112,8 @@ skills:
     package: 'packages/squilo'
     description: >
       Insert expensive post-processing (file I/O, API calls, computation) after Retrieve
-      via Transform() TransformStream. Database connections close before Transform runs.
+      via Transform() TransformStream. Runs once per database result (completion order),
+      after that database's connection is released.
       Not for simple mapping — inline that in Retrieve callback instead.
     requires:
       - retrieve-data
@@ -127,7 +130,8 @@ skills:
     description: >
       Consume Retrieve stream with Output(strategy). Built-in: MergeOutputStrategy,
       JsonOutputStrategy, ConsoleOutputStrategy. Excel via @squilo/xls-output-strategy.
-      Returns [ExecutionError[], result] tuple — always destructure. Filename auto-derived.
+      Merge/Json/Xls return an [ExecutionError[], result] tuple by default — destructure it.
+      Filename auto-derived.
     requires:
       - retrieve-data
     sources:
@@ -146,7 +150,8 @@ skills:
     description: >
       Understand SAFE_GUARD env var (default=1), ExecutionError[] tuple returns,
       SAFE_GUARD halting behavior, TimeoutError/AbortError/UnfinishedWorkError, mssql-specific error fields (code, number, state,
-      lineNumber). Errors returned not thrown. Check array length after every operation.
+      lineNumber). Per-database errors returned not thrown (a failing discovery query rejects).
+      Check array length after every operation.
     requires: []
     sources:
       - 'dodevs/Squilo:packages/squilo/src/pipes/shared/runner/index.ts'
@@ -163,7 +168,7 @@ skills:
     package: 'packages/squilo'
     description: >
       Implement AuthStrategy type for non-standard auth (certificates, key vault tokens,
-      custom identity providers). Returns new ServerConfig object. Never mutate input config.
+      custom identity providers). Returns a new mssql config with auth fields. Never mutate input config.
     requires: []
     sources:
       - 'dodevs/Squilo:packages/squilo/src/pipes/auth/strategies/types.ts'
@@ -209,14 +214,18 @@ skills:
     package: 'packages/squilo'
     description: >
       Spin up Azure SQL Edge Docker containers via testcontainers for integration tests.
-      Configure Squilo with container host/port. Progress bar disabled in test env.
-      Container lifecycle: beforeAll start, afterAll stop.
+      UseSqlServer(setup?) helper pattern: beforeAll start with its own hook timeout, wait
+      until logins work, afterAll stop. Progress bar disabled in test env (NODE_ENV=test).
+      On Windows, run Bun tests in a Linux container (bun run test:docker).
     requires:
       - connect-to-server
       - connect-to-databases
     sources:
       - 'dodevs/Squilo:packages/squilo/test/container/container.ts'
       - 'dodevs/Squilo:packages/squilo/test/container/setup/databases.ts'
+      - 'dodevs/Squilo:packages/squilo/test/index.spec.ts'
+      - 'dodevs/Squilo:packages/squilo/src/pipes/shared/progress.ts'
+      - 'dodevs/Squilo:scripts/test-docker.ts'
 
   # ── Developer Journeys ──
   - name: getting-started
@@ -228,7 +237,7 @@ skills:
     description: >
       Interactive onboarding: prompt for server URL, auth method, database name.
       Generate first working script (Server → Auth → Connect → Retrieve → Output).
-      Remind about process.exit() to prevent script hang. Bun install squilo and extensions.
+      Bun install squilo and extensions.
     requires:
       - connect-to-server
       - setup-authentication

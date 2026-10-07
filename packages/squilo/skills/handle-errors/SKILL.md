@@ -3,8 +3,8 @@ name: handle-errors
 description: >
   Handle errors across multi-database Squilo operations. Understand SAFE_GUARD
   env var (default=1, NaN disables), ExecutionError[] tuple returns,
-  SAFE_GUARD halting behavior. Errors returned not thrown. Check array
-  length after every operation. Mssql-specific error fields: code, number,
+  SAFE_GUARD halting behavior. Per-database errors returned not thrown (a
+  failing discovery query rejects). Check array length after every operation. Mssql-specific error fields: code, number,
   state, class, serverName, procName, lineNumber.
 type: core
 library: squilo
@@ -60,7 +60,6 @@ if (retErrors.length > 0) {
 }
 
 console.log(`Found ${users.length} users`);
-process.exit(0);
 ```
 
 ## Core Patterns
@@ -128,7 +127,6 @@ const [errors, result] = await Server({
 // errors contains failures from databases that were attempted
 // If SAFE_GUARD triggered, some databases may not have been attempted
 console.log(`${errors.length} databases failed`);
-process.exit(0);
 ```
 
 ### Process partial results when some databases fail
@@ -151,7 +149,6 @@ const [errors, users] = await Server({
 // MergeOutputStrategy flattens data from successful databases
 // errors contains failures from broken databases
 console.log(`Users from ${2 - errors.length} databases:`, users);
-process.exit(0);
 ```
 
 ## Common Mistakes
@@ -203,7 +200,7 @@ if (errors.length > 0) {
 }
 ```
 
-The runner catches errors per database and collects them in `ExecutionError[]`. Errors are never thrown to the caller.
+The runner catches errors per database and collects them in `ExecutionError[]`; they are never thrown to the caller. Exception: when `.Connect({ database, query })` is used and the discovery query itself fails, `.Execute()` / `.Output()` reject with that error (wrap discovery runs in `try`/`catch`).
 
 Source: packages/squilo/src/pipes/shared/runner/index.ts
 
@@ -364,7 +361,6 @@ await Server({
 
 // No error check — silently ignores failures
 console.log("Done");
-process.exit(0);
 ```
 
 Correct:
@@ -388,7 +384,6 @@ if (errors.length > 0) {
 }
 
 console.log("All databases updated");
-process.exit(0);
 ```
 
 `Execute()` returns `Promise<ExecutionError[]>`. Always check the array length — errors are not thrown.

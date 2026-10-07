@@ -18,6 +18,8 @@ sources:
 
 Implement a custom `OutputStrategy` when built-in strategies (`MergeOutputStrategy`, `JsonOutputStrategy`, `ConsoleOutputStrategy`, `XlsOutputStrategy`) don't meet your formatting or delivery needs. `OutputStrategy` is a function that consumes a `ReadableStream<ExecutionResult>` and returns any type.
 
+The stream is lazy: no database runs until the strategy starts reading it. Chunks arrive in completion order (one per database, not in input order).
+
 ## Setup
 
 Minimum custom output strategy (CSV):
@@ -72,7 +74,6 @@ const [errors, filename] = await Server({
 	.Output(CsvOutputStrategy());
 
 console.log(`CSV written to ${filename}`);
-process.exit(0);
 ```
 
 ## Core Patterns
@@ -126,7 +127,6 @@ const [errors, sent] = await Server({ ... }).Auth(...)
 	.Output(WebhookOutputStrategy("https://hooks.example.com/data"));
 
 console.log(`Sent ${sent} payloads`);
-process.exit(0);
 ```
 
 ### Database write-back output
@@ -205,7 +205,6 @@ const filename = await Server({ ... }).Auth(...)
 
 // Errors are inside the JSON file, not returned separately
 console.log(`Output written to ${filename}`);
-process.exit(0);
 ```
 
 ## Common Mistakes

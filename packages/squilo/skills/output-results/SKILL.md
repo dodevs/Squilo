@@ -4,8 +4,8 @@ description: >
   Consume Retrieve stream with Output(strategy). Built-in: MergeOutputStrategy
   (flat array), JsonOutputStrategy (file with includeEmpty/includeErrors),
   ConsoleOutputStrategy (log each chunk). Excel via XlsOutputStrategy from
-  @squilo/xls-output-strategy with separate/combined sheets. Returns
-  [ExecutionError[], result] tuple — always destructure.
+  @squilo/xls-output-strategy with separate/combined sheets. Merge/Json/Xls
+  return an [ExecutionError[], result] tuple by default — destructure it.
 type: core
 library: squilo
 library_version: "0.8.0-beta.1"
@@ -35,8 +35,8 @@ const [errors, allUsers] = await Server({
 	options: { encrypt: false }
 }).Auth(UserAndPassword("sa", "password"))
 	.Connect(["DB1", "DB2"])
-	.Retrieve(async (conn, db) => {
-		const result = await conn.query`SELECT * FROM ${db}.dbo.Users`;
+	.Retrieve(async (conn) => {
+		const result = await conn.query`SELECT * FROM dbo.Users`;
 		return result.recordset;
 	})
 	.Output(MergeOutputStrategy());
@@ -54,8 +54,8 @@ import { Server, UserAndPassword, JsonOutputStrategy } from "squilo";
 const [errors, filename] = await Server({...})
 	.Auth(UserAndPassword("sa", "password"))
 	.Connect(["DB1", "DB2", "DB3"])
-	.Retrieve(async (conn, db) => {
-		const result = await conn.query`SELECT * FROM ${db}.dbo.Users`;
+	.Retrieve(async (conn) => {
+		const result = await conn.query`SELECT * FROM dbo.Users`;
 		return result.recordset;
 	})
 	.Output(JsonOutputStrategy());
@@ -75,8 +75,8 @@ import { Server, UserAndPassword, JsonOutputStrategy } from "squilo";
 const filename = await Server({...})
 	.Auth(UserAndPassword("sa", "password"))
 	.Connect(["DB1", "DB2", "DB3"])
-	.Retrieve(async (conn, db) => {
-		const result = await conn.query`SELECT * FROM ${db}.dbo.Users`;
+	.Retrieve(async (conn) => {
+		const result = await conn.query`SELECT * FROM dbo.Users`;
 		return result.recordset;
 	})
 	.Output(JsonOutputStrategy(false, true));
@@ -95,8 +95,8 @@ import { XlsOutputStrategy } from "@squilo/xls-output-strategy";
 const [errors, filename] = await Server({...})
 	.Auth(UserAndPassword("sa", "password"))
 	.Connect(["DB1", "DB2", "DB3"])
-	.Retrieve(async (conn, db) => {
-		const result = await conn.query`SELECT * FROM ${db}.dbo.Users`;
+	.Retrieve(async (conn) => {
+		const result = await conn.query`SELECT * FROM dbo.Users`;
 		return result.recordset;
 	})
 	.Output(XlsOutputStrategy());
@@ -115,8 +115,8 @@ import { XlsOutputStrategy } from "@squilo/xls-output-strategy";
 const [errors, filename] = await Server({...})
 	.Auth(UserAndPassword("sa", "password"))
 	.Connect(["DB1", "DB2", "DB3"])
-	.Retrieve(async (conn, db) => {
-		const result = await conn.query`SELECT * FROM ${db}.dbo.Users`;
+	.Retrieve(async (conn) => {
+		const result = await conn.query`SELECT * FROM dbo.Users`;
 		return result.recordset;
 	})
 	.Output(XlsOutputStrategy(true, true, false));
@@ -183,7 +183,7 @@ if (errors.length > 0) {
 }
 ```
 
-`.Output()` always returns a tuple `[ExecutionError[], result]`. The first element contains per-database errors. The second element is the strategy-specific output (array, filename, void).
+`.Output()` returns whatever the strategy returns. `MergeOutputStrategy`, `JsonOutputStrategy` and `XlsOutputStrategy` return a tuple `[ExecutionError[], result]` by default: the first element contains per-database errors, the second the strategy-specific output (merged array or filename). `ConsoleOutputStrategy` returns `void`, and `includeErrors = true` makes Json/Xls return only the filename (see below).
 
 Source: packages/squilo/src/pipes/output/strategies/merge.ts
 

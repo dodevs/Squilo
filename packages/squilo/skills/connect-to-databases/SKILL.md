@@ -49,7 +49,8 @@ const [errors, allUsers] = await Server({
 }).Auth(UserAndPassword("sa", "password"))
 	.Connect(["TenantDB1", "TenantDB2", "TenantDB3", "TenantDB4", "TenantDB5"], 2)
 	.Retrieve(async (conn, db) => {
-		const result = await conn.query`SELECT * FROM ${db}.dbo.Users`;
+		// conn is already connected to `db`: no database prefix needed
+		const result = await conn.query`SELECT * FROM dbo.Users`;
 		return result.recordset;
 	})
 	.Output(MergeOutputStrategy());
@@ -94,23 +95,21 @@ const [errors, clients] = await Server({
 	port: 1433,
 	options: { encrypt: false }
 }).Auth(UserAndPassword("sa", "password"))
-	.Connect({
+	.Connect<{ Database: string; ClientName: string; Region: string; PlanType: string }>({
 		database: "ClientsManager",
-		query: `SELECT Database, ClientName, Region, PlanType FROM ActiveClients WHERE Active = 1`
+		query: `SELECT DatabaseName AS [Database], ClientName, Region, PlanType FROM ActiveClients WHERE Active = 1`
 	})
 	.Retrieve(async (conn, db) => {
-		// db has type DatabaseObject = { Database: string, ClientName: string, Region: string, PlanType: string }
-		const result = await conn.query`
-			SELECT '${db.ClientName}' AS Client, '${db.Region}' AS Region, *
-			FROM ${db.Database}.dbo.Users
-			WHERE PlanType = ${db.PlanType}
-		`;
-		return result.recordset;
+		// conn is connected to db.Database; ${...} values become bound parameters, not SQL text
+		const result = await conn.query`SELECT * FROM dbo.Users WHERE PlanType = ${db.PlanType}`;
+		return result.recordset.map((user) => ({ ...user, Client: db.ClientName, Region: db.Region }));
 	})
 	.Output(MergeOutputStrategy());
 ```
 
-The query must return rows with a `Database` column. Additional columns become properties on the `DatabaseObject` and are available in the `.Retrieve()` callback.
+The query must return rows with a `Database` column (the `query` type requires `[Database]` between `SELECT` and `FROM`). Additional columns become properties on the database object passed to the callback; pass their type explicitly (`.Connect<{ Database: string; ... }>(...)`), otherwise `db` is only `DatabaseObject` (`{ Database: string }`).
+
+The discovery connection is closed after the query. If the discovery query itself fails, there are no databases to run: `.Execute()` / `.Output()` reject with that error instead of returning it as data.
 
 ### Using discovered database properties in Execute
 
@@ -122,9 +121,9 @@ const errors = await Server({
 	port: 1433,
 	options: { encrypt: false }
 }).Auth(UserAndPassword("sa", "password"))
-	.Connect({
+	.Connect<{ Database: string; LastSyncDate: Date }>({
 		database: "ClientsManager",
-		query: `SELECT Database, LastSyncDate FROM Clients WHERE NeedsSync = 1`
+		query: `SELECT DatabaseName AS [Database], LastSyncDate FROM Clients WHERE NeedsSync = 1`
 	})
 	.Execute(async (conn, db) => {
 		await conn.query`
@@ -158,11 +157,11 @@ import { Server, UserAndPassword } from "squilo";
 Server({...}).Auth(UserAndPassword("sa", "password"))
 	.Connect({
 		database: "ClientsManager",
-		query: `SELECT Database, ClientName, Region FROM ActiveClients`
+		query: `SELECT DatabaseName AS [Database], ClientName, Region FROM ActiveClients`
 	});
 ```
 
-The discovery query must return a `Database` column. This column is used to connect to each discovered database. Without it, the connection mechanism has no database names to connect to.
+The discovery query must return a `Database` column. This column is used to connect to each discovered database. `DATABASE` is a reserved word in T-SQL, so alias it with brackets (`... AS [Database]`); the `ConnectionOptions.query` type (`SELECT ${string}[Database]${string} FROM ${string}`) rejects queries without it at compile time.
 
 Source: packages/squilo/src/pipes/connect/types.ts
 

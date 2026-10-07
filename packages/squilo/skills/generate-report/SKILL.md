@@ -4,8 +4,7 @@ description: >
   End-to-end report workflow: discover tenant databases from management DB,
   retrieve usage/cost data per DB, transform/aggregate, output to Excel with
   XlsOutputStrategy(combineSheets) or JSON with JsonOutputStrategy. Handle
-  partial failures with SAFE_GUARD awareness. Always process.exit() at end
-  of standalone report scripts.
+  partial failures with SAFE_GUARD awareness.
 type: lifecycle
 library: squilo
 library_version: "0.8.0-beta.1"
@@ -40,69 +39,68 @@ const [errors, filename] = await Server({
 	port: 1433,
 	options: { encrypt: false }
 }).Auth(UserAndPassword("sa", "password"))
-	.Connect({
+	.Connect<{ Database: string; ClientName: string; Region: string }>({
 		database: "ClientsManager",
-		query: `SELECT Database, ClientName, Region FROM ActiveClients WHERE Active = 1`
+		query: `SELECT DatabaseName AS [Database], ClientName, Region FROM ActiveClients WHERE Active = 1`
 	})
 	.Retrieve(async (conn, db) => {
+		// conn is connected to db.Database; add per-client columns in JS, not by interpolating SQL text
 		const result = await conn.query`
 			SELECT
-				'${db.ClientName}' AS Client,
-				'${db.Region}' AS Region,
 				ProductId,
 				SUM(Quantity) AS TotalQuantity,
 				SUM(TotalCost) AS TotalCost
-			FROM ${db.Database}.dbo.Orders
+			FROM dbo.Orders
 			WHERE CreatedAt >= DATEADD(month, -1, GETDATE())
 			GROUP BY ProductId
 		`;
-		return result.recordset;
+		return result.recordset.map((row) => ({ Client: db.ClientName, Region: db.Region, ...row }));
 	})
 	.Output(XlsOutputStrategy(true, true, false));
 // combineSheets=true, includeEmpty=true, includeErrors=false
 
 console.log(`Report generated: ${filename}`);
-process.exit(errors.length > 0 ? 1 : 0);
+process.exitCode = errors.length > 0 ? 1 : 0;
 ```
 
-### Aggregate with Transform before output
+### Aggregate per database with Transform, then across databases
 
 ```ts
-import { Server, UserAndPassword, JsonOutputStrategy } from "squilo";
+import { Server, UserAndPassword, MergeOutputStrategy } from "squilo";
 
-const [errors, filename] = await Server({...})
+type Order = { ProductId: string; Quantity: number; TotalCost: number };
+type ProductTotals = { productId: string; quantity: number; cost: number };
+
+const sumByProduct = (rows: ProductTotals[]): ProductTotals[] => {
+	const byProduct = new Map<string, ProductTotals>();
+	for (const row of rows) {
+		const totals = byProduct.get(row.productId) ?? { productId: row.productId, quantity: 0, cost: 0 };
+		totals.quantity += row.quantity;
+		totals.cost += row.cost;
+		byProduct.set(row.productId, totals);
+	}
+	return [...byProduct.values()];
+};
+
+const [errors, perDatabase] = await Server({...})
 	.Auth(UserAndPassword("sa", "password"))
 	.Connect({
 		database: "ClientsManager",
-		query: `SELECT Database, ClientName FROM ActiveClients`
+		query: `SELECT DatabaseName AS [Database] FROM ActiveClients`
 	})
-	.Retrieve(async (conn, db) => {
-		const result = await conn.query`
-			SELECT ProductId, Quantity, TotalCost
-			FROM ${db.Database}.dbo.Orders
-		`;
+	.Retrieve(async (conn) => {
+		const result = await conn.query<Order>`SELECT ProductId, Quantity, TotalCost FROM dbo.Orders`;
 		return result.recordset;
 	})
-	.Transform(async (orders) => {
-		// Aggregate across all databases
-		const byProduct: Record<string, { quantity: number; cost: number }> = {};
-		for (const o of orders) {
-			if (!byProduct[o.ProductId]) {
-				byProduct[o.ProductId] = { quantity: 0, cost: 0 };
-			}
-			byProduct[o.ProductId].quantity += o.Quantity;
-			byProduct[o.ProductId].cost += o.TotalCost;
-		}
-		return Object.entries(byProduct).map(([id, stats]) => ({
-			productId: id,
-			...stats
-		}));
-	})
-	.Output(JsonOutputStrategy());
+	// Runs once per database, with that database's orders only
+	.Transform((orders) => sumByProduct(orders.map((o) => ({ productId: o.ProductId, quantity: o.Quantity, cost: o.TotalCost }))))
+	.Output(MergeOutputStrategy());
 
-console.log(`Aggregated report: ${filename}`);
-process.exit(0);
+// Across databases: aggregate the merged per-database totals after Output
+const report = sumByProduct(perDatabase);
 ```
+
+`.Transform()` never sees more than one database's data. To aggregate across databases, do it after a merging output (`MergeOutputStrategy`) or inside a custom output strategy.
 
 ### Scheduled report script with error handling
 
@@ -116,13 +114,14 @@ async function generateMonthlyReport() {
 		.Auth(UserAndPassword("sa", "password"))
 		.Connect({
 			database: "ClientsManager",
-			query: `SELECT Database, ClientName FROM ActiveClients`
+			// ClientName is written to the JSON with each result's `database` object
+			query: `SELECT DatabaseName AS [Database], ClientName FROM ActiveClients`
 		})
-		.Retrieve(async (conn, db) => {
+		.Retrieve(async (conn) => {
 			const result = await conn.query`
 				SELECT COUNT(*) AS UserCount,
 					AVG(DATEDIFF(day, LastLogin, GETDATE())) AS AvgDaysInactive
-				FROM ${db.Database}.dbo.Users
+				FROM dbo.Users
 			`;
 			return result.recordset[0];
 		})
@@ -138,7 +137,7 @@ async function generateMonthlyReport() {
 }
 
 const report = await generateMonthlyReport();
-process.exit(report.errors > 0 ? 1 : 0);
+process.exitCode = report.errors > 0 ? 1 : 0;
 ```
 
 ## Common Mistakes
@@ -181,7 +180,7 @@ if (errors.length > 0) {
 }
 
 console.log(`Users from ${5 - errors.length}/${5} databases: ${users.length}`);
-process.exit(errors.length > 0 ? 1 : 0);
+process.exitCode = errors.length > 0 ? 1 : 0;
 ```
 
 In multi-tenant reporting, some databases may be offline or have schema differences. Always check `errors.length` and report partial results explicitly. Use `SAFE_GUARD=0` to process all databases regardless of failures.
@@ -224,7 +223,7 @@ const [errors, report] = await Server({...})
 		return (await conn.query`SELECT * FROM Orders`).recordset;
 	})
 	.Transform(async (orders) => {
-		// Aggregate after all connections are closed
+		// Runs per database, after that database's connection is released
 		return {
 			count: orders.length,
 			total: orders.reduce((s, o) => s + o.Total, 0)
@@ -233,41 +232,9 @@ const [errors, report] = await Server({...})
 	.Output(MergeOutputStrategy());
 ```
 
-Aggregation in `.Retrieve()` holds database connections open during computation. Move aggregation to `.Transform()` — connections close first, then computation runs.
+Aggregation in `.Retrieve()` holds the database connection open during computation. Move it to `.Transform()`: each database's connection is released before its result is emitted, then `.Transform()` runs on that database's data (other databases may still be running). `.Transform()` does not receive the database name; the output strategy still gets it with each result.
 
 Source: packages/squilo/src/pipes/retrieve/index.ts
-
-### MEDIUM Forgetting process.exit() in standalone report script
-
-Wrong:
-
-```ts
-import { Server, UserAndPassword, JsonOutputStrategy } from "squilo";
-
-const [errors, filename] = await Server({...})
-	... // pipeline
-	.Output(JsonOutputStrategy());
-
-console.log(`Report: ${filename}`);
-// Script hangs — pools and progress bar keep event loop alive
-```
-
-Correct:
-
-```ts
-import { Server, UserAndPassword, JsonOutputStrategy } from "squilo";
-
-const [errors, filename] = await Server({...})
-	... // pipeline
-	.Output(JsonOutputStrategy());
-
-console.log(`Report: ${filename}`);
-process.exit(errors.length > 0 ? 1 : 0);
-```
-
-Report scripts are standalone processes. Connection pools and the `cli-progress` bar keep the event loop alive. Always call `process.exit()` at the end.
-
-Source: packages/squilo/src/pipes/shared/runner/index.ts
 
 ### MEDIUM Wrong XlsOutputStrategy parameters for combined sheets
 

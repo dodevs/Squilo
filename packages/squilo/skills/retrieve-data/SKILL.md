@@ -2,8 +2,8 @@
 name: retrieve-data
 description: >
   Query data across multiple SQL Server databases with Retrieve(). Streaming
-  results via ReadableStream. ConnectionPoolWrapper with AsyncDisposable
-  auto-closes connections. Transaction support with commit$() for atomicity.
+  results via ReadableStream. The runner opens and closes each database's
+  connection. Transaction support with commit$() for atomicity.
   Must end chain with Output() or Transform().Output() to consume stream.
 type: core
 library: squilo
@@ -31,16 +31,14 @@ const [errors, users] = await Server({
 	options: { encrypt: false }
 }).Auth(UserAndPassword("sa", "password"))
 	.Connect(["DB1", "DB2", "DB3"])
-	.Retrieve(async (conn, db) => {
-		const result = await conn.query`
-			SELECT * FROM Users WHERE Database = ${db}
-		`;
+	.Retrieve(async (conn) => {
+		// Runs once per database; conn is connected to that database
+		const result = await conn.query`SELECT * FROM Users`;
 		return result.recordset;
 	})
 	.Output(MergeOutputStrategy());
 
 console.log(`Found ${users.length} users`);
-process.exit(0);
 ```
 
 ## Core Patterns
@@ -59,10 +57,11 @@ const [errors, result] = await Server({
 	.Retrieve(async (conn) => {
 		await using transaction = await conn.transaction$();
 
-		await conn.query`
+		// Queries must run on the transaction, not on conn (another pooled connection)
+		await transaction.request().query`
 			UPDATE Accounts SET Balance = Balance - 100 WHERE Id = 1
 		`;
-		await conn.query`
+		await transaction.request().query`
 			UPDATE Accounts SET Balance = Balance + 100 WHERE Id = 2
 		`;
 
@@ -72,7 +71,7 @@ const [errors, result] = await Server({
 	.Output(MergeOutputStrategy());
 ```
 
-`await using` automatically disposes the transaction. If `commit$()` is not called, it rolls back.
+`await using` automatically disposes the transaction: it rolls back unless `commit$()` succeeded. A failing `commit$()` also rolls back. A deadlock victim (error 1205) is already rolled back by SQL Server, so that error surfaces as-is.
 
 ### Query with Table-Valued Parameter
 
@@ -115,30 +114,29 @@ const [errors, clients] = await Server({
 	port: 1433,
 	options: { encrypt: false }
 }).Auth(UserAndPassword("sa", "password"))
-	.Connect({
+	.Connect<{ Database: string; ClientName: string; Region: string }>({
 		database: "ClientsManager",
-		query: `SELECT Database, ClientName, Region FROM ActiveClients`
+		query: `SELECT DatabaseName AS [Database], ClientName, Region FROM ActiveClients`
 	})
 	.Retrieve(async (conn, db) => {
-		const result = await conn.query`
-			SELECT ${db.ClientName} AS Client, * FROM ${db.Database}.dbo.Users
-		`;
-		return result.recordset;
+		// conn is connected to db.Database
+		const result = await conn.query`SELECT * FROM dbo.Users`;
+		return result.recordset.map((user) => ({ Client: db.ClientName, Region: db.Region, ...user }));
 	})
 	.Output(MergeOutputStrategy());
 ```
 
 ## Common Mistakes
 
-### CRITICAL Stream not consumed — script hangs
+### HIGH Retrieve without Output — nothing runs
 
 Wrong:
 
 ```ts
 import { Server, UserAndPassword } from "squilo";
 
-// Retrieve returns a ReadableStream. Without Output(), the stream
-// is never consumed and the script hangs indefinitely.
+// Retrieve is lazy. Without Output(), nothing runs: no query is sent
+// and the script exits without an error.
 await Server({
 	server: "localhost",
 	port: 1433,
@@ -149,7 +147,7 @@ await Server({
 		const result = await conn.query`SELECT * FROM Users`;
 		return result.recordset;
 	});
-// Script hangs here — no error, no output
+// Nothing ran — no error, no output
 ```
 
 Correct:
@@ -170,14 +168,13 @@ const [errors, users] = await Server({
 	.Output(MergeOutputStrategy());
 
 console.log(users);
-process.exit(0);
 ```
 
 `.Retrieve()` returns a lazy `ReadableStream` of results: nothing runs until `.Output()` (or `.Transform().Output()`) consumes it.
 
 Source: packages/squilo/src/pipes/retrieve/index.ts
 
-### HIGH Forgetting await using on ConnectionPoolWrapper
+### MEDIUM Closing the connection manually inside the callback
 
 Wrong:
 
@@ -191,9 +188,8 @@ const [errors, result] = await Server({
 }).Auth(UserAndPassword("sa", "password"))
 	.Connect("MyDB")
 	.Retrieve(async (conn) => {
-		// Manual connection management — pool leaks on error
 		const result = await conn.query`SELECT * FROM Users`;
-		await conn.close(); // May not run if query throws
+		await conn.close(); // Unnecessary: the runner owns this connection
 		return result.recordset;
 	})
 	.Output(MergeOutputStrategy());
@@ -211,16 +207,15 @@ const [errors, result] = await Server({
 }).Auth(UserAndPassword("sa", "password"))
 	.Connect("MyDB")
 	.Retrieve(async (conn) => {
-		await using wrapped = conn; // Auto-disposes via AsyncDisposable
-		const result = await wrapped.query`SELECT * FROM Users`;
+		const result = await conn.query`SELECT * FROM Users`;
 		return result.recordset;
 	})
 	.Output(MergeOutputStrategy());
 ```
 
-`ConnectionPoolWrapper` implements `AsyncDisposable`. `await using` auto-closes the connection when the scope exits, even on error. Manual `.close()` is unnecessary and error-prone.
+The runner opens each database's connection before calling the callback and releases it afterwards, even when the callback throws (errors while closing are ignored). Just use `conn`; don't close it or wrap it in `await using`. Only transactions need `await using tx = await conn.transaction$()`.
 
-Source: packages/squilo/src/pool/index.ts
+Source: packages/squilo/src/pipes/shared/runner/index.ts
 
 ### HIGH Forgetting commit$() causes silent rollback
 
@@ -237,7 +232,7 @@ const [errors, result] = await Server({
 	.Connect("MyDB")
 	.Retrieve(async (conn) => {
 		await using tx = await conn.transaction$();
-		await conn.query`UPDATE Accounts SET Balance = 0`;
+		await tx.request().query`UPDATE Accounts SET Balance = 0`;
 		// Missing tx.commit$() — transaction auto-rolls back
 		return { updated: true };
 	})
@@ -257,14 +252,14 @@ const [errors, result] = await Server({
 	.Connect("MyDB")
 	.Retrieve(async (conn) => {
 		await using tx = await conn.transaction$();
-		await conn.query`UPDATE Accounts SET Balance = 0`;
+		await tx.request().query`UPDATE Accounts SET Balance = 0`;
 		await tx.commit$(); // Must call before scope exits
 		return { updated: true };
 	})
 	.Output(MergeOutputStrategy());
 ```
 
-`TransactionWrapper` auto-rolls back on disposal if `commit$()` was not called. The update is silently undone — no error is thrown.
+The transaction auto-rolls back on disposal unless `commit$()` succeeded. The update is silently undone — no error is thrown. Run the queries with `tx.request().query`; `conn.query` uses another pooled connection, outside the transaction, so its changes would not be rolled back (or committed) with it.
 
 Source: packages/squilo/src/pool/index.ts
 
@@ -309,7 +304,7 @@ const [errors, result] = await Server({
 		return result.recordset; // Just return raw data
 	})
 	.Transform(async (orders) => {
-		// File I/O happens AFTER connections are closed
+		// Runs per database, after that database's connection is released
 		const file = await Bun.file("./metadata.json").text();
 		return orders.map(row => ({ ...row, metadata: JSON.parse(file) }));
 	})

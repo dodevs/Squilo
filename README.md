@@ -49,18 +49,28 @@ bun install
 # Build all packages
 bun run build
 
-# Run all tests
+# Run all tests (SQL Server specs need Docker)
 bun run test
 bun run test:watch
+
+# Run the suite inside a Linux Bun container (for hosts where Bun can't reach Docker, e.g. Windows)
+bun run test:docker
 
 # Format code
 bun run format
 ```
 
-Run commands per package:
+Run single specs from the repository root (running inside a package skips the root `bunfig.toml`):
 
 ```bash
-cd packages/squilo && bun test
+bun test ./packages/squilo/test/connect.spec.ts
+bun test ./packages/xls-output-strategy/test/xls.spec.ts
+```
+
+Build per package:
+
+```bash
+cd packages/squilo && bun run build
 cd packages/msal-auth-strategy && bun run build
 cd packages/xls-output-strategy && bun run build
 ```

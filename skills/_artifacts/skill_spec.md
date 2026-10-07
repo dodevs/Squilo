@@ -77,10 +77,10 @@ Server(config) → .Auth(strategy) → .Connect(db|dbs|query) → .Retrieve(fn) 
 **When to use:** Specifying which database(s) to connect to after authentication is configured.
 
 **Key APIs:**
-- `.Connect(database: string)` — single database
-- `.Connect(databases: string[], options?: number | ExecutionOptions)` — multiple databases; a number is the concurrency limit
+- `.Connect(database: string, options?: ExecutionOptions)` — single database
+- `.Connect(databases: string[], options?: number | ExecutionOptions)` — multiple databases; the callback's `database` is one `string`
 - `.Connect<T extends DatabaseObject>(query: ConnectionOptions, options?: number | ExecutionOptions)` — dynamic discovery via query
-- `ExecutionOptions`: `{ concurrent?, retry?, timeout?, signal? }` — sliding-window concurrency, retry of transient errors (`IsTransientError`), per-database timeout, `AbortSignal` cancellation
+- `ExecutionOptions`: `{ concurrent?, retry?: number | { times, delay?, while? }, timeout?: number | "N unit", signal?: AbortSignal }` — a bare number for `options` is `concurrent`; concurrency defaults to unbounded and is a sliding window; retry of transient errors (`IsTransientError`), per-database timeout, `AbortSignal` cancellation
 
 **ConnectionOptions:**
 ```ts
@@ -90,7 +90,7 @@ type ConnectionOptions = {
 }
 ```
 
-**Dynamic discovery:** The query must return rows with a `Database` field. Extra columns become properties on the `DatabaseObject`.
+**Dynamic discovery:** The query must return rows with a `Database` field, e.g. `SELECT DatabaseName AS [Database], ClientName FROM Clients`. Extra columns become properties on the database object; pass their type explicitly (`.Connect<{ Database: string; ClientName: string }>(...)`) to use them in the callback. The discovery connection is closed after the query; if the query fails, `.Execute()` / `.Output()` reject with that error.
 
 **Wrong / Correct:**
 | ❌ Wrong | ✅ Correct |
@@ -116,16 +116,16 @@ Retrieve(
 ```
 
 **Important patterns:**
-- `ConnectionPoolWrapper` implements `AsyncDisposable` — use `await using` for auto-cleanup
-- `ConnectionPoolWrapper.transaction$()` returns a `TransactionWrapper` — call `commit$()` to commit, else auto-rollback on disposal
+- The callback's `connection` is opened and released by the runner (even on error; errors while closing are ignored) — don't close or wrap it. `ConnectionPoolWrapper` is not exported from `squilo`
+- `connection.transaction$()` returns a `TransactionWrapper` — use `await using tx = await conn.transaction$()`, run queries with `tx.request().query`, call `commit$()` to commit; it rolls back on disposal unless `commit$()` succeeded (a failing `commit$()` rolls back; a deadlock victim is not rolled back again, so error 1205 surfaces as-is)
 - Results stream through a lazy `ReadableStream` — nothing runs until `.Output()` or `.Transform() → .Output()` consumes it
 
 **Wrong / Correct:**
 | ❌ Wrong | ✅ Correct |
 |---|---|
-| Not ending Retrieve chain with `.Output()` or `.Transform() → .Output()` | Retrieve returns a `ReadableStream` — must be consumed by Output or the stream hangs |
-| Forgetting `await using` on ConnectionPoolWrapper | `await using wrapped = new ConnectionPoolWrapper(conn)` — auto-disposes on scope exit |
-| Putting expensive post-processing inside `.Retrieve()` callback | Use `.Transform()` for expensive ops — DB connections close before Transform runs |
+| Not ending Retrieve chain with `.Output()` or `.Transform() → .Output()` | Retrieve is lazy — without Output nothing runs |
+| Closing `conn` manually inside the callback | Just use `conn` — the runner releases each database's connection |
+| Putting expensive post-processing inside `.Retrieve()` callback | Use `.Transform()` for expensive ops — each database's connection is released before its result reaches Transform |
 | Not destructuring tuple return from `.Output()` | `const [errors, result] = await ...Output(...)` — errors are in the first element |
 
 **Related skills:** `connect-to-databases` (prerequisite), `transform-data`, `output-results` (next steps), `handle-errors`.
@@ -148,7 +148,7 @@ Execute(
 **Important notes:**
 - Returns `ExecutionError[]` directly — NOT a tuple like Retrieve → Output
 - No `.Output()` method available on Execute chain
-- Errors are collected, not thrown — always check the returned array
+- Errors are collected, not thrown — always check the returned array (only a failing discovery query rejects)
 - `SAFE_GUARD` applies: halts further connections after N errors
 
 **Wrong / Correct:**
@@ -156,7 +156,7 @@ Execute(
 |---|---|
 | Trying to chain `.Output()` after `.Execute()` | `.Execute()` returns `Promise<ExecutionError[]>` directly — no `.Output()` method |
 | Not checking returned `ExecutionError[]` array | Always check `const errors = await ...Execute(...)` — errors are returned, not thrown |
-| Assuming a single error stops all databases | `SAFE_GUARD` (default=1) halts further connections — already-queued DBs still execute |
+| Assuming a single error stops all databases | `SAFE_GUARD` (default=1) halts further connections — in-flight DBs finish, DBs not yet started are skipped |
 
 **Related skills:** `connect-to-databases` (prerequisite), `handle-errors`, `transform-data`.
 
@@ -164,7 +164,7 @@ Execute(
 
 ### 6. transform-data
 
-**When to use:** Expensive post-processing that should happen AFTER database connections are released.
+**When to use:** Expensive post-processing that should happen AFTER a database's connection is released.
 
 **Key API:** `.Transform(fn): TransformChain<T, TOutput>`
 
@@ -175,7 +175,7 @@ Transform(
 ): TransformChain<T, TOutput>
 ```
 
-**Critical design:** Transform is a `TransformStream` in the pipeline. The `Retrieve` pipe creates a `ReadableStream`. Database connections close as soon as all data is written to the stream. The `Transform` then processes the data without holding any DB connections.
+**Critical design:** Transform is a `TransformStream` in the pipeline. The `Retrieve` pipe exposes the runner's stream as a lazy `ReadableStream`, emitting one result per database in completion order; each database's connection is released before its result is emitted. The transform function runs once per successful result with that database's data only (errored results bypass it; the database name is not passed), while other databases may still be running. It never sees all databases at once — aggregate across databases after a merging output.
 
 **When to use Transform:**
 - File I/O (reading/writing files)
@@ -191,7 +191,7 @@ Transform(
 **Wrong / Correct:**
 | ❌ Wrong | ✅ Correct |
 |---|---|
-| Putting file I/O / API calls inside `.Retrieve()` callback | Move expensive ops to `.Transform()` — DB connections close first, then Transform runs |
+| Putting file I/O / API calls inside `.Retrieve()` callback | Move expensive ops to `.Transform()` — it runs per database, after that database's connection is released |
 | Using Transform for simple array mapping | Inline the mapping in Retrieve — Transform adds unnecessary stream overhead |
 
 **Related skills:** `retrieve-data` (prerequisite), `output-results` (next step).
@@ -266,7 +266,7 @@ type ExecutionError<T> = {
 | ❌ Wrong | ✅ Correct |
 |---|---|
 | Agents look for external "errors file" | Errors returned as `[ExecutionError[], result]` tuple — handle in code |
-| Thinking SAFE_GUARD stops the entire script | SAFE_GUARD stops *further connections* — already-queued DBs still execute |
+| Thinking SAFE_GUARD stops the entire script | SAFE_GUARD stops *further connections* — in-flight DBs finish, DBs not yet started are skipped |
 | Assuming errors are thrown | Errors are collected and returned — check the array |
 | Setting SAFE_GUARD to a string expecting it to work | Invalid values = `NaN` (disables guard). Use numeric env vars. |
 
@@ -278,7 +278,7 @@ type ExecutionError<T> = {
 
 **When to use:** Implementing non-standard authentication (certificates, key vault tokens, custom identity providers).
 
-**Key type:** `AuthStrategy = (config: ServerConfig) => ServerConfig`
+**Key type:** `AuthStrategy = (config: ServerConfig) => config` (`config` = mssql connection config, auth fields included)
 
 **Pattern:**
 ```ts
@@ -350,9 +350,9 @@ const CsvOutputStrategy = (): OutputStrategy<T, TReturn, [ExecutionError<T>[], s
 
 **When to use:** Setting up integration tests with Azure SQL Edge in Docker containers.
 
-**Pattern:** Use `testcontainers` library to spin up an `AzureSqlEdge` container, configure Squilo with the container's host/port, run tests, tear down.
+**Pattern:** A `UseSqlServer(setup?)` helper (the repo's own `test/container/container.ts`, not exported by `squilo` — copy the pattern): starts Azure SQL Edge in `beforeAll` with its own hook timeout (`SQL_SERVER_TIMEOUT`; bunfig's `timeout` only applies to tests), waits until logins work, runs `setup`, stops the container in `afterAll`. `sql.server` / `sql.container` only work inside tests or hooks ("SQL Server is not started yet" at describe time).
 
-**Key consideration:** Tests disable the progress bar (`Bun.env.NODE_ENV === 'test'`). The container must be started in `beforeAll` and stopped in `afterAll`.
+**Key consideration:** The progress bar is silent when `Bun.env.NODE_ENV === 'test'` (`src/pipes/shared/progress.ts`; `bun test` sets it unless already set). On Windows, Bun can't reach Docker's named pipe ("Could not find a working container runtime strategy"): run the tests in a Linux Bun container — `bun run test:docker` from the repo root.
 
 **Related skills:** `connect-to-server`, `connect-to-databases`.
 
@@ -367,11 +367,9 @@ const CsvOutputStrategy = (): OutputStrategy<T, TReturn, [ExecutionError<T>[], s
 2. Prompt for auth method (SQL auth or Azure AD)
 3. Prompt for database name(s)
 4. Generate a test script using `Server → Auth → Connect → Retrieve → Output`
-5. Remind to add `process.exit()` at end of standalone scripts
 
 **Key reminders:**
 - Include `import { Server, UserAndPassword, MergeOutputStrategy } from "squilo"`
-- Remind about `process.exit()` to prevent hanging
 - For Azure AD: include `@squilo/msal-auth-strategy` import and install
 
 **Related skills:** All core pipeline skills.
@@ -395,7 +393,7 @@ const [errors, filename] = await Server({...})
   .Auth(UserAndPassword("sa", "password"))
   .Connect({
     database: "ClientsManager",
-    query: `SELECT Database, ClientName FROM Clients WHERE Active = 1`
+    query: `SELECT DatabaseName AS [Database], ClientName FROM Clients WHERE Active = 1`
   })
   .Retrieve(async (conn, db) => {
     const result = await conn.query`
@@ -413,15 +411,9 @@ const [errors, filename] = await Server({...})
 
 ## Global Failure Mode Reference
 
-### Script Hang (`process.exit()` required)
-**Symptom:** Script appears to finish successfully but never exits.
-**Cause:** Connection pools and `cli-progress` SingleBar keep the event loop alive.
-**Fix:** Always add `process.exit()` at the end of standalone scripts.
-**Affected skills:** All pipeline skills, getting-started, generate-report.
-
 ### SAFE_GUARD Confusion
 **Symptom:** Developer thinks errors stop everything or expects thrown exceptions.
-**Reality:** `SAFE_GUARD` (default=1, env var) limits how many DB errors trigger before halting *further* connections. Already-queued DBs finish. Errors are returned in the tuple.
+**Reality:** `SAFE_GUARD` (default=1, env var) limits how many DB errors trigger before halting *further* connections. In-flight DBs finish; DBs not yet started are skipped. Errors are returned as data (only a failing discovery query rejects).
 **Fix:** Check `errors.length` from the return value. Set `SAFE_GUARD=0` to disable.
 **Affected skills:** handle-errors, execute-updates, retrieve-data.
 
@@ -433,20 +425,20 @@ const [errors, filename] = await Server({...})
 
 ### Connection Pool Not Closing
 **Symptom:** Memory leaks or "too many connections" errors.
-**Cause:** Manually calling `.close()` on pools or not using `await using`.
-**Reality:** Pools are cached by DB name and auto-managed. `ConnectionPoolWrapper` auto-closes via `AsyncDisposable`.
-**Fix:** Use `await using wrapped = new ConnectionPoolWrapper(conn)` inside `.Retrieve`/`.Execute` callbacks.
+**Cause:** Managing connections manually instead of letting the runner do it, or leaving a transaction/query unfinished when the callback returns.
+**Reality:** Pools are cached by DB name. The runner opens each database's connection and releases it after the callback, even on error; a callback that returns with work still running fails with `UnfinishedWorkError` and the connection is force-closed.
+**Fix:** Just use the callback's `conn` — don't close or wrap it. Use `await using tx = await conn.transaction$()` for transactions and await every query.
 **Affected skills:** retrieve-data, execute-updates.
 
 ### Transaction Auto-Rollback
 **Symptom:** Changes appear to succeed but are not persisted.
 **Cause:** Using `await using` on `TransactionWrapper` but not calling `commit$()`.
-**Reality:** `TransactionWrapper` auto-rolls back on disposal if not committed.
-**Fix:** Always call `await transaction.commit$()` before the `await using` scope exits.
+**Reality:** `TransactionWrapper` auto-rolls back on disposal unless `commit$()` succeeded (a failing `commit$()` rolls back; a deadlock victim is not rolled back again, so error 1205 surfaces as-is).
+**Fix:** Run queries with `transaction.request().query` (not `conn.query`, which uses another pooled connection) and call `await transaction.commit$()` before the `await using` scope exits.
 **Affected skills:** retrieve-data, execute-updates.
 
 ### Stream Not Consumed
-**Symptom:** Script hangs after `.Retrieve()` — no error, no output.
-**Cause:** `.Retrieve()` returns a `ReadableStream`. Without `.Output()` or `.Transform() → .Output()`, the stream is never consumed.
+**Symptom:** Script ends after `.Retrieve()` without querying anything — no error, no output.
+**Cause:** `.Retrieve()` returns a lazy `ReadableStream`. Without `.Output()` or `.Transform() → .Output()`, nothing runs.
 **Fix:** Always end Retrieve chain with `.Output(strategy)` or `.Transform(fn).Output(strategy)`.
 **Affected skills:** retrieve-data, transform-data, output-results.

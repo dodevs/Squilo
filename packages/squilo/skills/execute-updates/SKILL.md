@@ -3,8 +3,9 @@ name: execute-updates
 description: >
   Run UPDATE, INSERT, DELETE, DDL across one or more databases with Execute().
   Returns Promise<ExecutionError[]> directly — no Output() chaining available.
-  Errors are collected not thrown. SAFE_GUARD limits errors before halting further
-  connections. Always check the returned error array length.
+  Per-database errors are collected not thrown (only a failing discovery query
+  rejects). SAFE_GUARD limits errors before halting further connections. Always
+  check the returned error array length.
 type: core
 library: squilo
 library_version: "0.8.0-beta.1"
@@ -54,9 +55,10 @@ const errors = await Server({
 	options: { encrypt: false }
 }).Auth(UserAndPassword("sa", "password"))
 	.Connect(["TenantDB1", "TenantDB2", "TenantDB3"], 2)
-	.Execute(async (conn, db) => {
+	.Execute(async (conn) => {
+		// conn is already connected to the current database: no database prefix needed
 		await conn.query`
-			UPDATE ${db}.dbo.Users SET Status = 'archived' WHERE LastLogin < DATEADD(year, -1, GETDATE())
+			UPDATE dbo.Users SET Status = 'archived' WHERE LastLogin < DATEADD(year, -1, GETDATE())
 		`;
 	});
 
@@ -77,12 +79,15 @@ const errors = await Server({
 	.Execute(async (conn) => {
 		await using tx = await conn.transaction$();
 
-		await conn.query`UPDATE Accounts SET Balance = Balance - 100 WHERE Id = 1`;
-		await conn.query`UPDATE Accounts SET Balance = Balance + 100 WHERE Id = 2`;
+		// Run queries on the transaction: conn.query would use another pooled connection, outside it
+		await tx.request().query`UPDATE Accounts SET Balance = Balance - 100 WHERE Id = 1`;
+		await tx.request().query`UPDATE Accounts SET Balance = Balance + 100 WHERE Id = 2`;
 
 		await tx.commit$();
 	});
 ```
+
+`tx` rolls back on dispose unless `commit$()` succeeded; if `commit$()` itself fails, the transaction is rolled back. A deadlock victim (error 1205) is already rolled back by SQL Server, so the original error surfaces as-is.
 
 ### Batch DDL across discovered databases
 
@@ -96,11 +101,11 @@ const errors = await Server({
 }).Auth(UserAndPassword("sa", "password"))
 	.Connect({
 		database: "ClientsManager",
-		query: `SELECT Database FROM ActiveClients`
+		query: `SELECT DatabaseName AS [Database] FROM ActiveClients`
 	})
-	.Execute(async (conn, db) => {
+	.Execute(async (conn) => {
 		await conn.query`
-			ALTER TABLE ${db.Database}.dbo.Users ADD EmailVerified BIT DEFAULT 0
+			ALTER TABLE dbo.Users ADD EmailVerified BIT DEFAULT 0
 		`;
 	});
 ```
@@ -183,7 +188,7 @@ if (errors.length > 0) {
 console.log("Update complete on all databases");
 ```
 
-`.Execute()` collects errors per-database and returns them — it does not throw. Always check the returned array length.
+`.Execute()` collects errors per-database and returns them — it does not throw for them. Always check the returned array length. Exception: if a discovery query (`.Connect({ database, query })`) fails, `.Execute()` rejects with that error.
 
 Source: packages/squilo/src/pipes/execute/index.ts
 
@@ -225,7 +230,7 @@ errors.forEach(err => {
 });
 ```
 
-Individual database errors are caught by the runner and added to the returned `ExecutionError[]` array. The `Execute()` promise resolves with the error array — it never rejects for individual database failures.
+Individual database errors are caught by the runner and added to the returned `ExecutionError[]` array. The `Execute()` promise resolves with the error array — it never rejects for individual database failures (only a failing discovery query makes it reject).
 
 Source: packages/squilo/src/pipes/shared/runner/index.ts
 
