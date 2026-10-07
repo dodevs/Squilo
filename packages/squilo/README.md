@@ -801,7 +801,7 @@ The `test/` directory contains comprehensive examples of:
 
 Tests use [testcontainers](https://testcontainers.com/) with an Azure SQL Edge Docker image. Container specs call
 `UseSqlServer(setup?)` from `test/container/container.ts`, which starts the container in `beforeAll`, waits until it
-accepts logins and stops it in `afterAll`. `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts` and the output strategy
+accepts logins and stops it in `afterAll`. `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts`, `progress.spec.ts` and the output strategy
 specs don't need Docker.
 
 ## Related Packages

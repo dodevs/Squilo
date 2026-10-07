@@ -39,7 +39,7 @@ import { SQL, Server, UserAndPassword } from "squilo";
 
 export const SQL_PASSWORD = "YourStrong@Passw0rd";
 
-// bunfig's `timeout` only applies to tests; hooks need their own.
+// Bun's default timeout is 5 s (bunfig.toml has no timeout option); starting SQL Server takes longer.
 export const SQL_SERVER_TIMEOUT = 180_000;
 
 export const CONFIG = (container: StartedTestContainer): SQL.config => ({
@@ -188,7 +188,6 @@ Source: packages/squilo/test/container/container.ts
 Wrong:
 
 ```ts
-// bunfig.toml: [test] timeout = 60000 — applies to tests only
 beforeAll(async () => {
 	container = await new GenericContainer("mcr.microsoft.com/azure-sql-edge")...start();
 }); // Hook uses Bun's default timeout: fails while the image is pulled / SQL Server starts
@@ -207,7 +206,7 @@ afterAll(async () => {
 }, SQL_SERVER_TIMEOUT);
 ```
 
-`bunfig.toml`'s `timeout` only applies to tests. Hooks need their own timeout argument; pulling the image and starting SQL Server can take minutes on the first run.
+Bun's default timeout for tests and hooks is 5 s, and `bunfig.toml` has no option to change it (a `timeout` key there is silently ignored). Pass a timeout to the hooks, or call `setDefaultTimeout` from `bun:test` in a preload file; pulling the image and starting SQL Server can take minutes on the first run.
 
 Source: packages/squilo/test/container/container.ts
 

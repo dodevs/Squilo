@@ -456,7 +456,7 @@ Skills reference source files via `sources` in frontmatter using the format `dod
 - **Runner**: `bun:test` (`describe`, `it`, `test`, `expect`, `beforeAll`, `afterAll`, `mock`)
 - **Container**: `testcontainers` with `mcr.microsoft.com/azure-sql-edge` Docker image
 - **Wait strategy**: `Wait.forLogMessage('Recovery is complete')`, then polls until SQL Server accepts logins
-- **Lifecycle**: container specs call `UseSqlServer(setup?)` (`test/container/container.ts`): starts the container in `beforeAll` with hook timeout `SQL_SERVER_TIMEOUT` (bunfig's `timeout` only applies to tests), runs `setup`, stops it in `afterAll`
+- **Lifecycle**: container specs call `UseSqlServer(setup?)` (`test/container/container.ts`): starts the container in `beforeAll` with hook timeout `SQL_SERVER_TIMEOUT` (180 s; the 60 s default for tests and hooks comes from `setDefaultTimeout` in the `scripts/test-setup.ts` preload, since bunfig has no timeout option), runs `setup`, stops it in `afterAll`
 - **Data**: `@faker-js/faker` for user generation (seed: 123)
 
 ### Test file structure
@@ -469,6 +469,7 @@ packages/squilo/test/
 ├── runner.spec.ts                    # Runner with an in-memory Pool (no Docker): concurrency, SAFE_GUARD, discovery failure
 ├── pool.spec.ts                      # TransactionWrapper with a fake Transaction (no Docker): failing commit$ rolls back
 ├── transient.spec.ts                 # IsTransientError (no Docker)
+├── progress.spec.ts                  # Progress bar, silent and real (no Docker)
 ├── transform.spec.ts                 # Transform pipe: async transform, property addition, value doubling
 ├── error-handling.spec.ts            # SAFE_GUARD behavior + timeout/abort/UnfinishedWorkError rolling back a real transaction
 └── container/
@@ -487,7 +488,7 @@ packages/xls-output-strategy/test/
 - `ClientsManager`: Contains `Clients` table with `DatabaseName` column — used for discovery query tests
 - SA password: `YourStrong@Passw0rd`
 - Progress bars: disabled in test env (`Bun.env.NODE_ENV === 'test'` check in `pipes/shared/progress.ts`)
-- Docker-free specs: `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts`, and the output strategy specs (`merge.spec.ts`, `json.spec.ts`, `console.spec.ts`, `xls.spec.ts`), which use in-memory `ReadableStream` mocks
+- Docker-free specs: `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts`, `progress.spec.ts`, and the output strategy specs (`merge.spec.ts`, `json.spec.ts`, `console.spec.ts`, `xls.spec.ts`), which use in-memory `ReadableStream` mocks
 
 ---
 

@@ -350,7 +350,7 @@ const CsvOutputStrategy = (): OutputStrategy<T, TReturn, [ExecutionError<T>[], s
 
 **When to use:** Setting up integration tests with Azure SQL Edge in Docker containers.
 
-**Pattern:** A `UseSqlServer(setup?)` helper (the repo's own `test/container/container.ts`, not exported by `squilo` — copy the pattern): starts Azure SQL Edge in `beforeAll` with its own hook timeout (`SQL_SERVER_TIMEOUT`; bunfig's `timeout` only applies to tests), waits until logins work, runs `setup`, stops the container in `afterAll`. `sql.server` / `sql.container` only work inside tests or hooks ("SQL Server is not started yet" at describe time).
+**Pattern:** A `UseSqlServer(setup?)` helper (the repo's own `test/container/container.ts`, not exported by `squilo` — copy the pattern): starts Azure SQL Edge in `beforeAll` with its own hook timeout (`SQL_SERVER_TIMEOUT`; bunfig has no test timeout option, and Bun's default is 5 s), waits until logins work, runs `setup`, stops the container in `afterAll`. `sql.server` / `sql.container` only work inside tests or hooks ("SQL Server is not started yet" at describe time).
 
 **Key consideration:** The progress bar is silent when `Bun.env.NODE_ENV === 'test'` (`src/pipes/shared/progress.ts`; `bun test` sets it unless already set). On Windows, Bun can't reach Docker's named pipe ("Could not find a working container runtime strategy"): run the tests in a Linux Bun container — `bun run test:docker` from the repo root.
 

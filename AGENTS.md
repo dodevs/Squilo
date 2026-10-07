@@ -256,9 +256,9 @@ Tests use **`bun:test`** (built into Bun) with **testcontainers** (`v11.7.1`) to
 Test config in `bunfig.toml`:
 ```toml
 [test]
-timeout = 60000
+preload = ["./scripts/test-setup.ts"]
 coverage = true
-coverageThreshold = { line = 0.7, function = 0.9, statement = 0.9 }
+coverageThreshold = { lines = 0.7, functions = 0.9, statements = 0.9 }
 coverageDir = "./coverage"
 coverageReporter = ["text", "lcov"]
 ```
@@ -273,6 +273,7 @@ test/
 ├── connection.spec.ts         # ConnectionPoolWrapper + TransactionWrapper disposal, deadlock surfaced as-is
 ├── pool.spec.ts               # TransactionWrapper with a fake Transaction (no Docker): commit failure rolls back
 ├── transient.spec.ts          # IsTransientError (no Docker)
+├── progress.spec.ts           # Progress bar, silent and real (no Docker)
 ├── transform.spec.ts          # Transform pipe: async transform, property addition
 ├── error-handling.spec.ts     # SAFE_GUARD behavior + timeout/abort/UnfinishedWorkError rolling back a real transaction
 └── container/                 # Test container helpers (container.ts: UseSqlServer)
@@ -297,7 +298,7 @@ bun run test:watch
 
 Tests require Docker. The Azure SQL Edge image is pulled automatically by testcontainers on first run.
 
-Container-backed specs use `UseSqlServer(setup?)` from `test/container/container.ts`: it starts SQL Server in `beforeAll` (waiting until logins work), runs `setup`, and stops it in `afterAll`. Hooks need an explicit timeout (`SQL_SERVER_TIMEOUT`) because the `timeout` in `bunfig.toml` only applies to tests. `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts` and the output strategy specs need no Docker.
+Container-backed specs use `UseSqlServer(setup?)` from `test/container/container.ts`: it starts SQL Server in `beforeAll` (waiting until logins work), runs `setup`, and stops it in `afterAll`. `bunfig.toml` has no test timeout option: `scripts/test-setup.ts` (preload) sets a 60 s default for tests and hooks with `setDefaultTimeout`, and the container hooks use `SQL_SERVER_TIMEOUT` (180 s) because the first image pull takes longer. `coverageThreshold` keys are plural (`lines`, `functions`, `statements`); singular keys are silently ignored. `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts`, `progress.spec.ts` and the output strategy specs need no Docker.
 
 ## Code Style
 
