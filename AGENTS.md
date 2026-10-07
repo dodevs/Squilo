@@ -285,14 +285,20 @@ test/
 # All tests (requires Docker running)
 bun run test
 
-# Specific test file
-cd packages/squilo && bun test test/connect.spec.ts
+# Specific test file (run from the root so the root bunfig.toml applies)
+bun test ./packages/squilo/test/connect.spec.ts
+
+# Inside a Linux Bun container, for hosts where Bun cannot reach Docker (Windows: named pipe)
+bun run test:docker
+bun run test:docker ./packages/squilo/test/connect.spec.ts
 
 # Watch mode for TDD
 bun run test:watch
 ```
 
 Tests require Docker. The Azure SQL Edge image is pulled automatically by testcontainers on first run.
+
+Container-backed specs use `UseSqlServer(setup?)` from `test/container/container.ts`: it starts SQL Server in `beforeAll` (waiting until logins work), runs `setup`, and stops it in `afterAll`. Hooks need an explicit timeout (`SQL_SERVER_TIMEOUT`) because the `timeout` in `bunfig.toml` only applies to tests. `runner.spec.ts`, `pool.spec.ts`, `transient.spec.ts` and the output strategy specs need no Docker.
 
 ## Code Style
 
@@ -435,6 +441,7 @@ Results from Retrieve are always `ExecutionResult<T, TReturn>`, which is `{ data
 
 ### Common Issues
 - **Tests fail with connection errors**: Ensure Docker is running and the Azure SQL Edge container can start. Run `docker ps` to verify.
+- **`Could not find a working container runtime strategy` on Windows**: Bun cannot use the Docker named pipe. Run `bun run test:docker` instead.
 - **SAFE_GUARD errors**: If execution halts early, check the `SAFE_GUARD` env var. Set to `0` to disable.
 - **Build errors**: Ensure `bun install` has been run and all workspace dependencies are resolved.
 - **Type errors after adding new strategies**: Run `bun run build` in the package to regenerate declarations.
