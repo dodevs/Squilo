@@ -20,16 +20,18 @@ const ResolveDatabases = <T extends string | DatabaseObject>(
     }
 
     if (typeof param === "object" && "query" in param) {
-        return Effect.tryPromise({
-            try: () => pool
-                .connect({ database: param.database })()
-                .then(conn => conn
-                    .request()
-                    .query<T>(param.query)
-                )
-                .then(result => result.recordset),
-            catch: (error) => error,
-        });
+        // The management database's pool is only needed for discovery: close it even if the query fails.
+        return Effect.acquireUseRelease(
+            Effect.tryPromise({
+                try: () => pool.connect({ database: param.database })(),
+                catch: (error) => error,
+            }),
+            (conn) => Effect.tryPromise({
+                try: () => conn.request().query<T>(param.query).then(result => result.recordset),
+                catch: (error) => error,
+            }),
+            (conn) => Effect.promise(() => conn.close().catch(() => { })),
+        );
     }
 
     throw new Error("Invalid parameter");

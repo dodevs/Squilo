@@ -200,7 +200,7 @@ describe("Runner", () => {
   });
 
   test("Should run against databases returned by the discovery query", async () => {
-    const { pool } = FakePool({ discovery: async () => [{ Database: "a" }, { Database: "b" }] });
+    const { pool, events } = FakePool({ discovery: async () => [{ Database: "a" }, { Database: "b" }] });
 
     const results = await Connect(pool)<{ Database: string }>({
       database: "Manager",
@@ -213,6 +213,25 @@ describe("Runner", () => {
       { Database: "a" },
       { Database: "b" },
     ]);
+    expect(events).toContain("close:Manager");
+  });
+
+  test("Should close the discovery connection when the discovery query fails", async () => {
+    const { pool, events } = FakePool({
+      discovery: async () => {
+        throw new Error("Invalid column name 'DatabaseName'.");
+      },
+    });
+
+    const output = Connect(pool)<{ Database: string }>({
+      database: "Manager",
+      query: "SELECT DatabaseName as [Database] FROM Clients",
+    })
+      .Retrieve(async () => 1)
+      .Output(Collect());
+
+    await expect(output).rejects.toThrow("Invalid column name 'DatabaseName'.");
+    expect(events).toEqual(["close:Manager"]);
   });
 
   test("Should reject Output instead of hanging when discovery fails", async () => {
