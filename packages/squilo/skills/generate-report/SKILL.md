@@ -8,7 +8,7 @@ description: >
   of standalone report scripts.
 type: lifecycle
 library: squilo
-library_version: "0.7.0-beta.1"
+library_version: "0.8.0-beta.1"
 sources:
   - "dodevs/Squilo:packages/squilo/README.md"
   - "dodevs/Squilo:packages/squilo/src/pipes/connect/index.ts"

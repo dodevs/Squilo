@@ -8,7 +8,7 @@ description: >
   [ExecutionError[], result] tuple — always destructure.
 type: core
 library: squilo
-library_version: "0.7.0-beta.1"
+library_version: "0.8.0-beta.1"
 sources:
   - "dodevs/Squilo:packages/squilo/src/pipes/output/index.ts"
   - "dodevs/Squilo:packages/squilo/src/pipes/output/strategies/merge.ts"

@@ -7,7 +7,7 @@ description: >
   afterAll stop. Create test databases and seed data.
 type: composition
 library: squilo
-library_version: "0.7.0-beta.1"
+library_version: "0.8.0-beta.1"
 sources:
   - "dodevs/Squilo:packages/squilo/test/container/container.ts"
   - "dodevs/Squilo:packages/squilo/test/container/setup/databases.ts"

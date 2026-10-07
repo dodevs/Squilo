@@ -7,7 +7,7 @@ description: >
   — skill focuses on the integration seam.
 type: composition
 library: squilo
-library_version: "0.7.0-beta.1"
+library_version: "0.8.0-beta.1"
 sources:
   - "dodevs/Squilo:packages/squilo/README.md"
   - "dodevs/Squilo:packages/squilo/src/pipes/retrieve/index.ts"

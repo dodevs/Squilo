@@ -25,19 +25,19 @@ Squilo/
 ├── README.md / context.md / progress.md
 │
 ├── packages/
-│   ├── squilo/                  # Core pipeline + built-in strategies (published as "squilo", v0.7.0-beta.1)
+│   ├── squilo/                  # Core pipeline + built-in strategies (published as "squilo", v0.8.0-beta.1)
 │   │   ├── src/                 # Main source code
 │   │   ├── test/                # Integration tests (Azure SQL Edge container)
 │   │   ├── skills/              # 14 @tanstack/intent SKILL.md files
 │   │   ├── dist/                # Build output
 │   │   └── package.json
 │   │
-│   ├── msal-auth-strategy/      # Azure AD auth extension (published as "@squilo/msal-auth-strategy", v0.7.0-beta.1)
+│   ├── msal-auth-strategy/      # Azure AD auth extension (published as "@squilo/msal-auth-strategy", v0.8.0-beta.1)
 │   │   ├── src/                 # msal.ts + index.ts
 │   │   ├── dist/
 │   │   └── package.json
 │   │
-│   └── xls-output-strategy/     # Excel output extension (published as "@squilo/xls-output-strategy", v0.7.0-beta.1)
+│   └── xls-output-strategy/     # Excel output extension (published as "@squilo/xls-output-strategy", v0.8.0-beta.1)
 │       ├── src/                 # xls.ts + index.ts
 │       ├── test/                # xls.spec.ts
 │       ├── dist/
@@ -54,7 +54,7 @@ Squilo/
 
 ## Monorepo Architecture
 
-The root `package.json` is private with `workspaces: ["packages/*"]`. Three packages share the same `0.7.0-beta.1` version:
+The root `package.json` is private with `workspaces: ["packages/*"]`. Three packages share the same `0.8.0-beta.1` version:
 
 | Package | Published as | Role | Key dependency |
 |---|---|---|---|
@@ -62,7 +62,7 @@ The root `package.json` is private with `workspaces: ["packages/*"]`. Three pack
 | `packages/msal-auth-strategy` | `@squilo/msal-auth-strategy` | Azure AD (Entra ID) interactive/silent auth | `@azure/msal-node`, `open` |
 | `packages/xls-output-strategy` | `@squilo/xls-output-strategy` | Excel `.xlsx` output with separate or combined sheets | `xlsx` (SheetJS CDN tarball) |
 
-Extension packages (`msal-auth-strategy`, `xls-output-strategy`) declare `squilo` as a **peer dependency** using workspace protocol: `"squilo": "workspace:^0.7.0-beta.1"`. They import types from `squilo` (`AuthStrategy`, `OutputStrategy`, `ExecutionResult`, etc.) but do not bundle them.
+Extension packages (`msal-auth-strategy`, `xls-output-strategy`) declare `squilo` as a **peer dependency** using workspace protocol: `"squilo": "workspace:^0.8.0-beta.1"`. They import types from `squilo` (`AuthStrategy`, `OutputStrategy`, `ExecutionResult`, etc.) but do not bundle them.
 
 **Build**: Root `bunup.config.ts` uses `defineWorkspace()` to configure three parallel ESM builds. Each package gets its own `dist/` with code splitting and declaration file generation. All use `format: "esm"`, `target: "bun"`, `sourcemap: "linked"`, `splitting: true`, and `exports: true`.
 
@@ -506,7 +506,7 @@ c9835a2 test: add database indexes and configurable user quantity
 61cf2cc chore: update dependencies and move @types/mssql to production
 ```
 
-> **Note**: The repo has been restructured from a single-package layout (`src/`, `test/`) to a monorepo (`packages/squilo/src/`, `packages/msal-auth-strategy/`, `packages/xls-output-strategy/`). The current version is `0.7.0-beta.1` across all packages. The older git history (pre-0.7.0) reflects the pre-monorepo structure.
+> **Note**: The repo has been restructured from a single-package layout (`src/`, `test/`) to a monorepo (`packages/squilo/src/`, `packages/msal-auth-strategy/`, `packages/xls-output-strategy/`). The current version is `0.8.0-beta.1` across all packages. The older git history (pre-0.7.0) reflects the pre-monorepo structure.
 
 ---
 
