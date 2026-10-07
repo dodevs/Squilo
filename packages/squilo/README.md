@@ -254,6 +254,9 @@ const errors = await LocalServer
 - **`signal`**: databases that have not started are skipped; in-flight ones fail with an `AbortError` and are closed like on
   timeout. Results obtained before aborting are kept.
 
+If a callback returns while a connection is still in use (e.g. `const tx = await conn.transaction$()` without
+`await using`), that database fails with an `UnfinishedWorkError` and its transaction is rolled back.
+
 ## Authentication
 
 ### SQL Username/Password

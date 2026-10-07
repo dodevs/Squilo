@@ -210,7 +210,8 @@ The `Pool` factory creates a `Record<string, () => Promise<ConnectionPool>>` cac
 
 ### 2. AsyncDisposable Pattern
 `ConnectionPoolWrapper` wraps `ConnectionPool` with `Symbol.asyncDispose`. Use with `await using` for auto-close. Adds `transaction$()` method.
-`TransactionWrapper` wraps `Transaction` with `Symbol.asyncDispose`. **Auto-rolls back** on disposal unless `commit$()` was called first.
+`TransactionWrapper` wraps `Transaction` with `Symbol.asyncDispose`. **Auto-rolls back** on disposal unless `commit$()` was called first, or SQL Server already aborted the transaction (deadlock victim: the original error surfaces, not a `SuppressedError`).
+Both wrappers **extend the mssql object in place** (`new X(obj) === obj`) instead of copying it: mssql keeps updating the original (e.g. its `_aborted` flag), so a copy would go stale.
 
 ### 3. Streaming Architecture
 Retrieve uses `ReadableStream` / `TransformStream` to stream results. `Transform` pipes through another `TransformStream`. The output strategy consumes the stream. This keeps memory low and allows processing results as they arrive.
@@ -226,6 +227,7 @@ Environment variable `SAFE_GUARD` limits how many database errors trigger before
 - `signal`: `AbortSignal`. Not-started databases are skipped; in-flight ones fail with an `AbortError` result.
 
 Timeout/abort interrupt the execution and the Runner calls `ForceClose` (`pool/index.ts`): it closes busy tedious connections at the socket level, so the query dies and SQL Server rolls back the open transaction. A plain `pool.close()` would hang forever while a transaction holds a connection (tarn waits for used resources).
+The same check runs when a callback returns normally: if a connection is still busy (e.g. `const tx` instead of `await using tx`), the database fails with `UnfinishedWorkError` and the connection is force-closed, so its transaction is rolled back instead of hanging the run.
 
 ### 6. Dynamic Database Discovery
 `ConnectionOptions` allows specifying a management database and a SQL query that returns rows with a `Database` column. Uses `DatabaseObject` type (`{ Database: string }`) for type-safe discovery.

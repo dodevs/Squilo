@@ -340,7 +340,7 @@ const [errors] = await Server({ ... }).Auth(...)
 // With concurrent=1: the first failure trips the guard and the remaining databases never start
 ```
 
-`SAFE_GUARD` halts databases that have not started but does not cancel in-flight executions (an `AbortSignal` passed in `.Connect(dbs, { signal })` does). Timeouts and aborts surface as errors named `TimeoutError` / `AbortError`; transient errors can be retried with `.Connect(dbs, { retry })` (see connect-to-databases). Concurrency is a sliding window: a new database starts as soon as any running one finishes.
+`SAFE_GUARD` halts databases that have not started but does not cancel in-flight executions (an `AbortSignal` passed in `.Connect(dbs, { signal })` does). Timeouts and aborts surface as errors named `TimeoutError` / `AbortError`; a callback that returns with a transaction still open (no `await using`) fails with `UnfinishedWorkError` and is rolled back; transient errors can be retried with `.Connect(dbs, { retry })` (see connect-to-databases). Concurrency is a sliding window: a new database starts as soon as any running one finishes.
 
 Source: packages/squilo/src/pipes/shared/runner/index.ts
 

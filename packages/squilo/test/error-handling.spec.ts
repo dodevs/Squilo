@@ -89,7 +89,7 @@ describe("Error handling and logging tests", async () => {
     });
   });
 
-  describe("Timeout and abort in execute operations", () => {
+  describe("Interrupted and unfinished executions", () => {
     const marker = "interrupted@test.com";
 
     const countMarker = async (database: string) => {
@@ -141,6 +141,24 @@ describe("Error handling and logging tests", async () => {
       expect(Date.now() - started).toBeLessThan(5000);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.error.name).toBe("AbortError");
+      expect(await countMarker(database)).toBe(0);
+    });
+
+    test("Should fail a callback that leaves its transaction open, and roll it back", async () => {
+      process.env.SAFE_GUARD = "0";
+      const database = DATABASES[2]!;
+      const started = Date.now();
+
+      const errors = await localServer
+        .Connect([database])
+        .Execute(async (conn) => {
+          const tx = await conn.transaction$(); // missing `await using` and `commit$()`
+          await tx.request().query`INSERT INTO Users (Name, Email) VALUES ('Interrupted', ${marker})`;
+        });
+
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.error.name).toBe("UnfinishedWorkError");
       expect(await countMarker(database)).toBe(0);
     });
   });

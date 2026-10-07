@@ -1,6 +1,6 @@
-import { Duration, Effect, Exit, Option, Result, Schedule, Stream } from "effect";
+import { Duration, Effect, Option, Result, Schedule, Stream } from "effect";
 import type { MSSQLError, RequestError } from "mssql";
-import { ConnectionPoolWrapper, ForceClose, type Pool } from "../../../pool";
+import { ConnectionPoolWrapper, ForceClose, HasBusyConnections, type Pool } from "../../../pool";
 import { LoadEnv } from "../../../utils/load-env";
 import type { DatabaseObject, DurationInput, ExecutionOptions, RetryOptions } from "../../connect/types";
 import { Progress } from "../progress";
@@ -16,6 +16,7 @@ import {
     type RunnerFn,
     type RunStream,
     TimedOut,
+    UnfinishedWork,
 } from "./types";
 
 const nameOf = (database: string | DatabaseObject): string =>
@@ -51,6 +52,9 @@ const withRetry = <A>(execution: Effect.Effect<A, RunnerError>, retry: number | 
     });
 };
 
+// mssql defers some connection releases (e.g. after the server aborts a transaction) with setImmediate.
+const settle = Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+
 /** Fails with `Aborted` as soon as the signal aborts. */
 const abortion = (signal: AbortSignal) => Effect.callback<never, Aborted>((resume) => {
     const onAbort = () => resume(Effect.fail(new Aborted()));
@@ -80,19 +84,30 @@ export const Runner = <T extends string | DatabaseObject>(
             try: () => pool.connect({ database: nameOf(database) })(),
             catch: (cause) => new ConnectionFailed(cause),
         }).pipe(Effect.map((conn) => new ConnectionPoolWrapper(conn))),
-        // An interrupted execution (timeout/abort) may still hold a transaction: `close()` would never resolve.
-        (conn, exit) => Exit.hasInterrupts(exit)
+        // A connection still busy here (interrupted by timeout/abort, or a transaction left open) would make
+        // `close()` wait forever.
+        (conn) => settle.pipe(Effect.andThen(Effect.suspend(() => HasBusyConnections(conn)
             ? Effect.sync(() => ForceClose(conn))
-            : Effect.promise(() => conn.close().catch(() => { })),
+            : Effect.promise(() => conn.close().catch(() => { }))
+        ))),
     );
 
-    const attempt = (database: T): Effect.Effect<TReturn, RunnerError> => connection(database).pipe(
-        Effect.flatMap((conn) => Effect.tryPromise({
+    const attempt = (database: T): Effect.Effect<TReturn, RunnerError> => Effect.scoped(Effect.gen(function* () {
+        const conn = yield* connection(database);
+        const result = yield* Effect.tryPromise({
             try: () => fn(conn, database),
             catch: (cause) => new ExecutionFailed(cause),
-        })),
-        Effect.scoped,
-    );
+        });
+
+        // The callback returned but left work behind (e.g. `const tx` instead of `await using tx`): its
+        // transaction is about to be rolled back, so this database must not be reported as a success.
+        yield* settle;
+        if (HasBusyConnections(conn)) {
+            return yield* Effect.fail(new UnfinishedWork());
+        }
+
+        return result;
+    }));
 
     const execute = (database: T): Effect.Effect<TReturn, RunnerError> => {
         let execution = attempt(database);

@@ -18,9 +18,13 @@ const Collect = <T, TReturn>(): OutputStrategy<T, TReturn, ExecutionResult<T, TR
   return results;
 };
 
-/** In-memory Pool: records lifecycle events and lets each test decide which connections fail. */
+/**
+ * In-memory Pool: records lifecycle events and lets each test decide which connections fail.
+ * A database in `busy` has a checked-out connection (like an open transaction or a running query).
+ */
 const FakePool = (options: { failConnect?: string[]; discovery?: () => Promise<unknown[]> } = {}) => {
   const events: string[] = [];
+  const busy = new Set<string>();
 
   const pool: Pool = {
     connect: ({ database }) => async () => {
@@ -32,8 +36,18 @@ const FakePool = (options: { failConnect?: string[]; discovery?: () => Promise<u
         close: async () => {
           events.push(`close:${database}`);
         },
-        // tarn pool internals used by ForceClose: one busy connection per database
-        pool: { used: [{ resource: { close: () => events.push(`kill:${database}`) } }] },
+        // tarn pool internals read by HasBusyConnections/ForceClose
+        pool: {
+          get used() {
+            const resource = {
+              close: () => {
+                events.push(`kill:${database}`);
+                busy.delete(database!);
+              },
+            };
+            return busy.has(database!) ? [{ resource }] : [];
+          },
+        },
         request: () => ({
           query: async () => ({ recordset: await options.discovery!() }),
         }),
@@ -41,7 +55,7 @@ const FakePool = (options: { failConnect?: string[]; discovery?: () => Promise<u
     },
   };
 
-  return { pool, events };
+  return { pool, events, busy };
 };
 
 describe("Runner", () => {
@@ -225,6 +239,30 @@ describe("Runner", () => {
     await expect(execution).rejects.toThrow("Login failed for Manager");
   });
 
+  describe("unfinished work", () => {
+    test("Should fail and force-close a database whose callback left a connection busy", async () => {
+      const { pool, events, busy } = FakePool();
+
+      const errors = await Connect(pool)(["a", "b"]).Execute(async (_, database) => {
+        if (database === "a") busy.add(database); // e.g. `const tx = await conn.transaction$()` without `await using`
+      });
+
+      expect(errors).toEqual([{ database: "a", error: expect.objectContaining({ name: "UnfinishedWorkError" }) }]);
+      expect(events.sort()).toEqual(["close:a", "close:b", "kill:a"]);
+    });
+
+    test("Should not report data from a database whose callback left a connection busy", async () => {
+      const { pool, busy } = FakePool();
+
+      const results = await Connect(pool)(["a"]).Retrieve(async (_, database) => {
+        busy.add(database);
+        return "uncommitted";
+      }).Output(Collect());
+
+      expect(results).toEqual([{ database: "a", data: undefined, error: expect.objectContaining({ name: "UnfinishedWorkError" }) }]);
+    });
+  });
+
   describe("retry", () => {
     const deadlock = () => Object.assign(new Error("Transaction was deadlocked"), { number: 1205 });
 
@@ -311,11 +349,13 @@ describe("Runner", () => {
 
   describe("timeout", () => {
     test("Should fail a database that exceeds its budget and force-close its connection", async () => {
-      const { pool, events } = FakePool();
+      const { pool, events, busy } = FakePool();
       const started = Date.now();
 
       const errors = await Connect(pool)(["slow", "fast"], { timeout: 50 }).Execute(async (_, database) => {
+        busy.add(database);
         await sleep(database === "slow" ? 2000 : 5);
+        busy.delete(database);
       });
 
       expect(Date.now() - started).toBeLessThan(1000);
@@ -343,7 +383,7 @@ describe("Runner", () => {
 
   describe("signal", () => {
     test("Should abort in-flight databases and skip the ones not started", async () => {
-      const { pool, events } = FakePool();
+      const { pool, events, busy } = FakePool();
       const controller = new AbortController();
       const called: string[] = [];
       setTimeout(() => controller.abort(), 50);
@@ -351,6 +391,7 @@ describe("Runner", () => {
       const started = Date.now();
       const errors = await Connect(pool)(["a", "b", "c"], { concurrent: 1, signal: controller.signal }).Execute(async (_, database) => {
         called.push(database);
+        busy.add(database);
         await sleep(2000);
       });
 

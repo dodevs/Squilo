@@ -93,4 +93,37 @@ describe('ConnectionPoolWrapper and TransactionWrapper', async () => {
         expect(result.recordset[0].Email).toBe(testEmail);
     }
   });
+
+  test('TransactionWrapper should surface a deadlock as-is (no SuppressedError from a failed rollback)', async () => {
+    const database = DATABASES[3];
+    const setup = new ConnectionPool({ ...config, database });
+    await setup.connect();
+    await setup.query(`
+      CREATE TABLE DeadlockA (Id INT PRIMARY KEY, V INT); INSERT INTO DeadlockA VALUES (1, 0);
+      CREATE TABLE DeadlockB (Id INT PRIMARY KEY, V INT); INSERT INTO DeadlockB VALUES (1, 0);
+    `);
+    await setup.close();
+
+    // Each side locks one table, then waits for the other: SQL Server picks a victim and rolls it back.
+    const lockInOrder = async (first: string, second: string) => {
+      const conn = new ConnectionPool({ ...config, database });
+      await conn.connect();
+      await using wrappedPool = new ConnectionPoolWrapper(conn);
+      await using transaction = await wrappedPool.transaction$();
+      await transaction.request().query(`UPDATE ${first} SET V = 1 WHERE Id = 1`);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await transaction.request().query(`UPDATE ${second} SET V = 1 WHERE Id = 1`);
+      await transaction.commit$();
+    };
+
+    const results = await Promise.allSettled([
+      lockInOrder('DeadlockA', 'DeadlockB'),
+      lockInOrder('DeadlockB', 'DeadlockA'),
+    ]);
+
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.reason.name).not.toBe('SuppressedError');
+    expect(rejected[0]!.reason.number).toBe(1205);
+  });
 });

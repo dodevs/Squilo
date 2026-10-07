@@ -4,41 +4,46 @@ export interface TransactionWrapper extends Transaction, AsyncDisposable {
     commit$: () => Promise<void>;
 }
 
-export const TransactionWrapper = function(this: TransactionWrapper, transaction: Transaction) {
-    Object.setPrototypeOf(this, Object.getPrototypeOf(transaction));
-    Object.assign(this, transaction);
-    
+const isAborted = (transaction: Transaction): boolean =>
+    (transaction as unknown as { _aborted?: boolean })._aborted === true;
+
+// The wrappers extend the mssql object itself instead of copying it: mssql keeps updating the original
+// (e.g. `_aborted` when SQL Server rolls back a deadlock victim), so a copy would go stale.
+// biome-ignore lint/complexity/useArrowFunction: arrow functions cannot be called with `new`
+export const TransactionWrapper = function(transaction: Transaction) {
     let committed: boolean = false;
 
-    this.commit$ = async function() {
-        await this.commit();
-        committed = true;
-    };
-
-    this[Symbol.asyncDispose] = async function() {
-        if (!committed) {
-            return await this.rollback();
-        }
-    };
-} as unknown as new (transaction: Transaction) => TransactionWrapper & Transaction;
+    return Object.assign(transaction, {
+        async commit$() {
+            await transaction.commit();
+            committed = true;
+        },
+        async [Symbol.asyncDispose]() {
+            // SQL Server already rolled it back (deadlock victim, XACT_ABORT): rolling back again would
+            // fail and hide the original error behind a SuppressedError.
+            if (!committed && !isAborted(transaction)) {
+                await transaction.rollback();
+            }
+        },
+    });
+} as unknown as new (transaction: Transaction) => TransactionWrapper;
 
 export interface ConnectionPoolWrapper extends ConnectionPool, AsyncDisposable {
     transaction$: () => Promise<TransactionWrapper>;
 }
 
-export const ConnectionPoolWrapper = function(this: ConnectionPoolWrapper, conn: ConnectionPool) {
-    Object.setPrototypeOf(this, Object.getPrototypeOf(conn));
-    Object.assign(this, conn);
-
-    this.transaction$ = async function() {
-        const transaction = await this.transaction().begin();
-        return new TransactionWrapper(transaction);
-    };
-
-    this[Symbol.asyncDispose] = async function() {
-        return await this.close();
-    };
-} as unknown as new (conn: ConnectionPool) => ConnectionPoolWrapper & ConnectionPool;
+// biome-ignore lint/complexity/useArrowFunction: arrow functions cannot be called with `new`
+export const ConnectionPoolWrapper = function(conn: ConnectionPool) {
+    return Object.assign(conn, {
+        async transaction$() {
+            const transaction = await conn.transaction().begin();
+            return new TransactionWrapper(transaction);
+        },
+        async [Symbol.asyncDispose]() {
+            await conn.close();
+        },
+    });
+} as unknown as new (conn: ConnectionPool) => ConnectionPoolWrapper;
 
 export type Pool = {
     connect: (partialConfig: Partial<config>) => () => Promise<ConnectionPool>;
@@ -87,13 +92,19 @@ export function Pool(poolConfig: config): Pool {
 
 type TarnPool = { used: { resource: { close(): void } }[] };
 
+// Connections checked out of the pool: held by an open transaction or a running request.
+const busyConnections = (conn: ConnectionPool) => (conn as unknown as { pool?: TarnPool }).pool?.used ?? [];
+
+export function HasBusyConnections(conn: ConnectionPool): boolean {
+    return busyConnections(conn).length > 0;
+}
+
 /**
  * Closes every busy connection at the socket level. Their running requests fail right away and SQL Server
  * rolls back any open transaction. `close()` alone would wait forever for a connection held by a transaction.
  */
 export function ForceClose(conn: ConnectionPool): void {
-    const tarn = (conn as unknown as { pool?: TarnPool }).pool;
-    for (const used of tarn?.used ?? []) {
+    for (const used of busyConnections(conn)) {
         used.resource.close();
     }
     // Not awaited: it only resolves once the caller's code lets go of its transaction.

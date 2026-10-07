@@ -42,4 +42,15 @@ export class Aborted {
     readonly cause: Error = Object.assign(new Error("Execution aborted"), { name: "AbortError" });
 }
 
-export type RunnerError = ConnectionFailed | ExecutionFailed | TimedOut | Aborted;
+export class UnfinishedWork {
+    readonly _tag: "UnfinishedWork" = "UnfinishedWork";
+    readonly cause: Error = Object.assign(
+        new Error(
+            "The callback returned while a connection was still in use (an open transaction or an un-awaited query). " +
+            "The connection was closed and SQL Server rolled back any open transaction."
+        ),
+        { name: "UnfinishedWorkError" },
+    );
+}
+
+export type RunnerError = ConnectionFailed | ExecutionFailed | TimedOut | Aborted | UnfinishedWork;
