@@ -1,31 +1,18 @@
-import { expect, beforeAll, describe, it, afterAll, test } from "bun:test";
-import { Server } from "../src/pipes/server";
-import { UserAndPassword } from "../src/pipes/auth/strategies";
+import { expect, describe, it, test } from "bun:test";
 import { MergeOutputStrategy } from "../src/pipes/output/strategies";
-import { AzureSqlEdge, SQL_PASSWORD } from "./container/container";
+import { UseSqlServer } from "./container/container";
 import { DATABASES, SetupDatabases } from "./container/setup/databases";
 import { SetupUsers, type User } from "./container/setup/users";
 
-describe('Squilo test', async () => {
-  const container = await AzureSqlEdge();
-
-  const LocalServer = Server({
-    server: container.getHost(),
-    port: container.getMappedPort(1433),
-    options: {
-      encrypt: false
-    },
-  })
-    .Auth(UserAndPassword("sa", SQL_PASSWORD));
-
-  beforeAll(async () => {
+describe('Squilo test', () => {
+  const sql = UseSqlServer(async (container) => {
     await SetupDatabases(container);
     await SetupUsers(container);
-  })
+  });
 
   it("Get one from each database", async () => {
 
-    const [, users] = await LocalServer
+    const [, users] = await sql.server
       .Connect(DATABASES)
       .Retrieve(async (conn) => {
         const result = await conn.query<User>`
@@ -40,7 +27,7 @@ describe('Squilo test', async () => {
   });
 
   test('Should fix user\'s email that are ending with extra space', async () => {
-    await LocalServer
+    await sql.server
       .Connect(DATABASES)
       .Execute(async (conn) => {
         await conn.query`
@@ -48,7 +35,7 @@ describe('Squilo test', async () => {
         `;
       })
 
-    const [, users] = await LocalServer
+    const [, users] = await sql.server
       .Connect(DATABASES)
       .Retrieve(async (conn) => {
         const result = await conn.query<User>`

@@ -1,33 +1,14 @@
-import { afterAll, beforeAll, describe, expect, it, test } from 'bun:test'
-import { connect, type ConnectionPool } from 'mssql'
-import type { StartedTestContainer } from 'testcontainers'
-import { AzureSqlEdge, SQL_PASSWORD } from './container';
+import { describe, expect, it } from 'bun:test'
+import { ConnectionPool } from 'mssql'
+import { CONFIG, UseSqlServer } from './container';
 
-describe('SQL Server', async () => {
-    let container: StartedTestContainer
-    let sqlClient: ConnectionPool
-
-    beforeAll(async () => {
-        container = await AzureSqlEdge()
-        sqlClient = await connect({
-            server: container.getHost(),
-            port: container.getMappedPort(1433),
-            database: 'master',
-            user: 'sa',
-            password: SQL_PASSWORD,
-            options: {
-                encrypt: false
-            }
-        });
-    })
-
-    afterAll(async () => {
-        await sqlClient?.close();
-        await container?.stop();
-    })
+describe('SQL Server', () => {
+    const sql = UseSqlServer();
 
     it('should connect to the database', async () => {
-        const result = await sqlClient.query`SELECT 'Hello'`;
+        const conn = await new ConnectionPool({ ...CONFIG(sql.container), database: 'master' }).connect();
+        const result = await conn.query`SELECT 'Hello'`;
         expect(result.recordset[0]['']).toBe('Hello');
+        await conn.close();
     })
 })

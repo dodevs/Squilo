@@ -1,5 +1,5 @@
 import { DATABASES } from "./databases";
-import { connect, NVarChar, Table } from "mssql";
+import { ConnectionPool, NVarChar, Table } from "mssql";
 import { CONFIG } from "../container";
 import { faker } from "@faker-js/faker";
 import type { StartedTestContainer } from "testcontainers";
@@ -18,10 +18,10 @@ export const SetupUsers = async (container: StartedTestContainer, options: {
   quantity: 10
 }): Promise<void> => {
   for (const database of DATABASES) {
-    const conn = await connect({
+    const conn = await new ConnectionPool({
       ...CONFIG(container),
       database
-    });
+    }).connect();
 
     await conn.request().query`
       IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Users')

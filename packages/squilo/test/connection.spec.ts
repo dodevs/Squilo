@@ -1,31 +1,19 @@
-import { expect, beforeAll, describe, test } from "bun:test";
+import { expect, describe, test } from "bun:test";
 import { ConnectionPool } from "mssql";
-import { AzureSqlEdge, SQL_PASSWORD } from "./container/container";
+import { CONFIG, UseSqlServer } from "./container/container";
 import { DATABASES, SetupDatabases } from "./container/setup/databases";
 import { SetupUsers } from "./container/setup/users";
 import { ConnectionPoolWrapper } from "../src/pool";
 
-describe('ConnectionPoolWrapper and TransactionWrapper', async () => {
-  const container = await AzureSqlEdge();
-  const config = {
-    server: container.getHost(),
-    port: container.getMappedPort(1433),
-    user: 'sa',
-    password: SQL_PASSWORD,
-    options: {
-      encrypt: false,
-      trustServerCertificate: true
-    },
-  };
-
-  beforeAll(async () => {
+describe('ConnectionPoolWrapper and TransactionWrapper', () => {
+  const sql = UseSqlServer(async (container) => {
     await SetupDatabases(container);
     await SetupUsers(container);
-  })
+  });
 
   test('ConnectionPoolWrapper should be disposable', async () => {
     const database = DATABASES[0];
-    const conn = new ConnectionPool({ ...config, database });
+    const conn = new ConnectionPool({ ...CONFIG(sql.container), database });
     await conn.connect();
     
     let isClosed = false;
@@ -50,7 +38,7 @@ describe('ConnectionPoolWrapper and TransactionWrapper', async () => {
 
   test('TransactionWrapper should rollback if not committed', async () => {
     const database = DATABASES[1]; // Use a different database to avoid conflicts
-    const conn = new ConnectionPool({ ...config, database });
+    const conn = new ConnectionPool({ ...CONFIG(sql.container), database });
     await conn.connect();
 
     const testEmail = "rollback-test@example.com";
@@ -71,7 +59,7 @@ describe('ConnectionPoolWrapper and TransactionWrapper', async () => {
 
   test('TransactionWrapper should commit if commit() is called', async () => {
     const database = DATABASES[2];
-    const conn = new ConnectionPool({ ...config, database });
+    const conn = new ConnectionPool({ ...CONFIG(sql.container), database });
     await conn.connect();
 
     const testEmail = "commit-test@example.com";
@@ -96,7 +84,7 @@ describe('ConnectionPoolWrapper and TransactionWrapper', async () => {
 
   test('TransactionWrapper should surface a deadlock as-is (no SuppressedError from a failed rollback)', async () => {
     const database = DATABASES[3];
-    const setup = new ConnectionPool({ ...config, database });
+    const setup = new ConnectionPool({ ...CONFIG(sql.container), database });
     await setup.connect();
     await setup.query(`
       CREATE TABLE DeadlockA (Id INT PRIMARY KEY, V INT); INSERT INTO DeadlockA VALUES (1, 0);
@@ -106,7 +94,7 @@ describe('ConnectionPoolWrapper and TransactionWrapper', async () => {
 
     // Each side locks one table, then waits for the other: SQL Server picks a victim and rolls it back.
     const lockInOrder = async (first: string, second: string) => {
-      const conn = new ConnectionPool({ ...config, database });
+      const conn = new ConnectionPool({ ...CONFIG(sql.container), database });
       await conn.connect();
       await using wrappedPool = new ConnectionPoolWrapper(conn);
       await using transaction = await wrappedPool.transaction$();

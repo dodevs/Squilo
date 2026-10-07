@@ -1,4 +1,4 @@
-import { Bit, connect, NVarChar, Table } from "mssql";
+import { Bit, ConnectionPool, NVarChar, Table } from "mssql";
 import { CONFIG } from "../container";
 import type { StartedTestContainer } from "testcontainers";
 
@@ -13,10 +13,10 @@ export const DATABASES: string[] = [
 ];
 
 export const SetupClientManager = async (container: StartedTestContainer): Promise<void> => {
-    const masterConn = await connect({
+    const masterConn = await new ConnectionPool({
         ...CONFIG(container),
         database: "master"
-    });
+    }).connect();
 
     await masterConn.query(`
         IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '${CLIENTS_MANAGER_DATABASE}')
@@ -27,10 +27,10 @@ export const SetupClientManager = async (container: StartedTestContainer): Promi
 
     await masterConn.close();
 
-    const clientManagerConn = await connect({
+    const clientManagerConn = await new ConnectionPool({
         ...CONFIG(container),
         database: CLIENTS_MANAGER_DATABASE
-    });
+    }).connect();
 
     await clientManagerConn.query(`
         IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Clients')
@@ -59,10 +59,10 @@ export const SetupClientManager = async (container: StartedTestContainer): Promi
 }
 
 export const SetupDatabases = async (container: StartedTestContainer): Promise<void> => {
-    const conn = await connect({
+    const conn = await new ConnectionPool({
         ...CONFIG(container),
         database: "master"
-    });
+    }).connect();
 
     for (const dbName of DATABASES) {
         await conn.query(`

@@ -1,30 +1,21 @@
 import { beforeAll, afterAll, describe, expect, test } from "bun:test";
 
-import { AzureSqlEdge, SQL_PASSWORD } from "./container/container";
-import { Server } from "../src/pipes/server";
-import { UserAndPassword } from "../src/pipes/auth/strategies";
+import { UseSqlServer } from "./container/container";
 import { DATABASES, SetupDatabases } from "./container/setup/databases";
 import { SetupUsers } from "./container/setup/users";
 import { LoadEnv } from "../src/utils/load-env";
 import { MergeOutputStrategy } from "../src/pipes/output/strategies";
 import type { ConnectionPoolWrapper } from "../src/pool";
 
-describe("Error handling and logging tests", async () => {
-  const container = await AzureSqlEdge();
-  const localServer = Server({
-    server: container.getHost(),
-    port: container.getMappedPort(1433),
-    options: {
-      encrypt: false,
-    },
-  }).Auth(UserAndPassword("sa", SQL_PASSWORD));
+describe("Error handling and logging tests", () => {
+  const sql = UseSqlServer(async (container) => {
+    await SetupDatabases(container);
+    await SetupUsers(container, { populate: false, quantity: 10 });
+  });
 
   let originalSafeGuard: string | undefined;
 
   beforeAll(async () => {
-    await SetupDatabases(container);
-    await SetupUsers(container, { populate: false, quantity: 10 });
-
     originalSafeGuard = process.env.SAFE_GUARD;
   });
 
@@ -60,7 +51,7 @@ describe("Error handling and logging tests", async () => {
     test("Should create error log for database errors in retrieve", async () => {
       process.env.SAFE_GUARD = "2";
 
-      const [errors, result] = await localServer
+      const [errors, result] = await sql.server
         .Connect(DATABASES)
         .Retrieve(async (conn) => {
           const result = await conn.query`SELECT * FROM NonExistentTable`;
@@ -77,7 +68,7 @@ describe("Error handling and logging tests", async () => {
     test("Should create error log for database errors in execute", async () => {
       process.env.SAFE_GUARD = "2";
 
-      const errors = await localServer
+      const errors = await sql.server
         .Connect(DATABASES)
         .Execute(async (conn) => {
           await conn.query`
@@ -93,7 +84,7 @@ describe("Error handling and logging tests", async () => {
     const marker = "interrupted@test.com";
 
     const countMarker = async (database: string) => {
-      const [, rows] = await localServer
+      const [, rows] = await sql.server
         .Connect(database)
         .Retrieve(async (conn) => {
           const result = await conn.query<{ n: number }>`SELECT COUNT(*) AS n FROM Users WHERE Email = ${marker}`;
@@ -117,7 +108,7 @@ describe("Error handling and logging tests", async () => {
       const database = DATABASES[0]!;
       const started = Date.now();
 
-      const errors = await localServer
+      const errors = await sql.server
         .Connect([database], { timeout: "1 second" })
         .Execute(slowTransaction);
 
@@ -134,7 +125,7 @@ describe("Error handling and logging tests", async () => {
       setTimeout(() => controller.abort(), 1000);
       const started = Date.now();
 
-      const errors = await localServer
+      const errors = await sql.server
         .Connect([database], { signal: controller.signal })
         .Execute(slowTransaction);
 
@@ -149,7 +140,7 @@ describe("Error handling and logging tests", async () => {
       const database = DATABASES[2]!;
       const started = Date.now();
 
-      const errors = await localServer
+      const errors = await sql.server
         .Connect([database])
         .Execute(async (conn) => {
           const tx = await conn.transaction$(); // missing `await using` and `commit$()`

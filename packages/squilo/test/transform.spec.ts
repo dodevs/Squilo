@@ -1,30 +1,17 @@
-import { expect, describe, it, beforeAll, afterAll } from "bun:test";
-import { Server } from "../src/pipes/server";
-import { UserAndPassword } from "../src/pipes/auth/strategies";
+import { expect, describe, it } from "bun:test";
 import { MergeOutputStrategy } from "../src/pipes/output/strategies";
-import { AzureSqlEdge, SQL_PASSWORD } from "./container/container";
+import { UseSqlServer } from "./container/container";
 import { DATABASES, SetupDatabases } from "./container/setup/databases";
 import { SetupUsers, type User } from "./container/setup/users";
 
-describe('Transform pipe test', async () => {
-  const container = await AzureSqlEdge();
-
-  const LocalServer = Server({
-    server: container.getHost(),
-    port: container.getMappedPort(1433),
-    options: {
-      encrypt: false
-    },
-  })
-  .Auth(UserAndPassword("sa", SQL_PASSWORD));
-
-  beforeAll(async () => {
+describe('Transform pipe test', () => {
+  const sql = UseSqlServer(async (container) => {
     await SetupDatabases(container);
     await SetupUsers(container);
-  })
+  });
 
   it("Should transform user data to uppercase emails", async () => {
-    const [, transformedUsers] = await LocalServer
+    const [, transformedUsers] = await sql.server
       .Connect(DATABASES)
       .Retrieve(async (conn) => {
         const result = await conn.query<User>`
@@ -47,7 +34,7 @@ describe('Transform pipe test', async () => {
   });
 
   it("Should transform single values", async () => {
-    const [, userCount] = await LocalServer
+    const [, userCount] = await sql.server
       .Connect(DATABASES)
       .Retrieve(async (conn) => {
         const result = await conn.query<{ count: number }>`
@@ -67,7 +54,7 @@ describe('Transform pipe test', async () => {
   });
 
   it("Should add new property to user data", async () => {
-    const [, transformedUsers] = await LocalServer
+    const [, transformedUsers] = await sql.server
       .Connect(DATABASES)
       .Retrieve(async (conn) => {
         const result = await conn.query<User>`
@@ -90,7 +77,7 @@ describe('Transform pipe test', async () => {
   });
 
   it("Should work with async transform", async () => {
-    const [, transformedUsers] = await LocalServer
+    const [, transformedUsers] = await sql.server
       .Connect(DATABASES)
       .Retrieve(async (conn) => {
         const result = await conn.query<User>`
@@ -114,7 +101,7 @@ describe('Transform pipe test', async () => {
   })
 
   it("Should work without Transform (existing functionality)", async () => {
-    const [, users] = await LocalServer
+    const [, users] = await sql.server
       .Connect(DATABASES)
       .Retrieve(async (conn) => {
         const result = await conn.query<User>`

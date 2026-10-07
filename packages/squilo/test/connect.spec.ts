@@ -1,20 +1,14 @@
 import { beforeAll, describe, expect, test, afterAll } from 'bun:test'
-import { AzureSqlEdge, SQL_PASSWORD } from './container/container'
-import { Server } from '../src';
-import { UserAndPassword } from '../src/pipes/auth/strategies';
+import { UseSqlServer } from './container/container'
 import { CLIENTS_MANAGER_DATABASE, DATABASES, SetupClientManager, SetupDatabases } from './container/setup/databases';
 import { MergeOutputStrategy } from '../src/pipes/output/strategies';
 import type { ConnectionPoolWrapper } from '../src/pool';
 
-describe('Connection overloads', async () => {
-    const container = await AzureSqlEdge();
-    const LocalServer = Server({
-        server: container.getHost(),
-        port: container.getMappedPort(1433),
-        options: {
-            encrypt: false
-        }
-    }).Auth(UserAndPassword("sa", SQL_PASSWORD));
+describe('Connection overloads', () => {
+    const sql = UseSqlServer(async (container) => {
+        await SetupDatabases(container);
+        await SetupClientManager(container);
+    });
 
     const currentDatabase = async (conn: ConnectionPoolWrapper) => {
         const result = await conn.query<{ name: string }>('SELECT DB_NAME() AS name');
@@ -24,8 +18,6 @@ describe('Connection overloads', async () => {
     let originalSafeGuard: string | undefined;
 
     beforeAll(async () => {
-        await SetupDatabases(container);
-        await SetupClientManager(container);
         originalSafeGuard = process.env.SAFE_GUARD;
         process.env.SAFE_GUARD = '0';
     });
@@ -41,7 +33,7 @@ describe('Connection overloads', async () => {
     test('Connect to unique database', async () => {
         const database = DATABASES[0]!;
 
-        const [errors, names] = await LocalServer
+        const [errors, names] = await sql.server
             .Connect(database)
             .Retrieve(currentDatabase)
             .Output(MergeOutputStrategy());
@@ -53,7 +45,7 @@ describe('Connection overloads', async () => {
     test('Connect with database list', async () => {
         const databases = [DATABASES[0]!, DATABASES[1]!];
 
-        const [errors, names] = await LocalServer
+        const [errors, names] = await sql.server
             .Connect(databases)
             .Retrieve(currentDatabase)
             .Output(MergeOutputStrategy());
@@ -67,7 +59,7 @@ describe('Connection overloads', async () => {
         let inFlight = 0;
         let maxInFlight = 0;
 
-        const [errors, names] = await LocalServer
+        const [errors, names] = await sql.server
             .Connect(databases, 2)
             .Retrieve(async (conn) => {
                 maxInFlight = Math.max(maxInFlight, ++inFlight);
@@ -86,7 +78,7 @@ describe('Connection overloads', async () => {
     });
 
     test('Connect with query', async () => {
-        const [errors, databases] = await LocalServer
+        const [errors, databases] = await sql.server
             .Connect<{ Database: string }>({
                 database: CLIENTS_MANAGER_DATABASE,
                 query: 'SELECT DatabaseName as [Database] FROM Clients WHERE Active = 1'

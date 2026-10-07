@@ -1,20 +1,16 @@
-import { beforeAll, describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
+import { ConnectionPool } from "mssql"
 import { SetupDatabases } from "./databases"
-import { AzureSqlEdge, CONFIG } from "../container"
-import { connect } from "mssql"
+import { CONFIG, UseSqlServer } from "../container"
 
-describe('Database creation', async () => {
-    const container = await AzureSqlEdge();
-
-    beforeAll(async () => {
-        await SetupDatabases(container);
-    })
+describe('Database creation', () => {
+    const sql = UseSqlServer(SetupDatabases);
 
     it('Should create 5 databases', async () => {
-        const conn = await connect({
-            ...CONFIG(container),
+        const conn = await new ConnectionPool({
+            ...CONFIG(sql.container),
             database: "master"
-        });
+        }).connect();
 
         const result = await conn.query`SELECT * FROM sys.databases WHERE name like 'TestDB%'`
         expect(result.recordset).toHaveLength(5);
