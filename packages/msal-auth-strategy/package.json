@@ -1,0 +1,48 @@
+{
+	"name": "@squilo/msal-auth-strategy",
+	"version": "0.7.0-beta.3",
+	"description": "Azure AD (Entra ID) interactive and silent authentication strategy for Squilo pipelines",
+	"keywords": ["azure", "entra-id", "msal", "authentication", "sql-server", "squilo"],
+	"type": "module",
+	"files": [
+		"dist"
+	],
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/dodevs/Squilo.git"
+	},
+	"author": {
+		"name": "Douglas da Silva Sousa",
+		"email": "douglass.sousa@outlook.com.br"
+	},
+	"scripts": {
+		"build": "bunup",
+		"test": "bun test"
+	},
+	"peerDependencies": {
+		"squilo": "workspace:^0.7.0-beta.3",
+		"typescript": "^5.9.3"
+	},
+	"dependencies": {
+		"@azure/msal-node": "^3.8.0",
+		"open": "^10.2.0"
+	},
+	"license": "MIT",
+	"engines": {
+		"node": ">=22"
+	}
+}

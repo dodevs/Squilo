@@ -1,0 +1,127 @@
+version: "1.0"
+library: squilo
+repository: https://github.com/dodevs/Squilo
+monorepo: true
+packages:
+  - name: squilo
+    path: packages/squilo
+    published: squilo
+    role: core-pipeline
+  - name: msal-auth-strategy
+    path: packages/msal-auth-strategy
+    published: "@squilo/msal-auth-strategy"
+    role: auth-extension
+  - name: xls-output-strategy
+    path: packages/xls-output-strategy
+    published: "@squilo/xls-output-strategy"
+    role: output-extension
+
+# Domain organization: each domain groups related skills.
+# Skills are task-focused — each one matches a specific developer moment.
+domains:
+  - id: core-pipeline
+    name: Core Pipeline
+    description: >
+      The fluent Server → Auth → Connect → Retrieve/Execute → [Transform] → Output
+      chain. These are the most common tasks developers perform with Squilo.
+    package: squilo
+    skills:
+      - connect-to-server
+      - setup-authentication
+      - connect-to-databases
+      - retrieve-data
+      - execute-updates
+      - transform-data
+      - output-results
+      - handle-errors
+
+  - id: extensibility
+    name: Extensibility
+    description: >
+      Custom strategies for authentication and output. Used when built-in
+      strategies don't cover a specific need.
+    package: squilo
+    skills:
+      - create-custom-auth-strategy
+      - create-custom-output-strategy
+
+  - id: integration
+    name: Integration & Tooling
+    description: >
+      Connecting Squilo with other libraries, frameworks, and infrastructure.
+      These skills cross package boundaries.
+    package: squilo
+    skills:
+      - integrate-honojs
+      - setup-testcontainers
+
+  - id: journeys
+    name: Developer Journeys
+    description: >
+      End-to-end workflows that span multiple pipeline steps. These are
+      cross-cutting skills for onboarding, reporting, and production workflows.
+    package: squilo
+    skills:
+      - getting-started
+      - generate-report
+
+# Cross-domain relationships: skills that frequently compose together.
+compositions:
+  - from: getting-started
+    to: [connect-to-server, setup-authentication, connect-to-databases, output-results]
+    note: Onboarding walks through the full pipeline end-to-end.
+
+  - from: generate-report
+    to: [connect-to-databases, retrieve-data, transform-data, output-results]
+    note: Reporting typically retrieves, transforms, and outputs to Excel/JSON.
+
+  - from: setup-authentication
+    to: [connect-to-server]
+    note: Auth is always chained after Server config.
+
+  - from: integrate-honojs
+    to: [retrieve-data, output-results]
+    note: Hono routes use Retrieve to stream results to HTTP responses.
+
+  - from: setup-testcontainers
+    to: [connect-to-server, connect-to-databases]
+    note: Testcontainers provide the SQL Server for integration tests.
+
+# Monorepo-specific notes: skills that touch multiple packages.
+monorepo-cross-package:
+  - skill: setup-authentication
+    note: >
+      When using Azure AD, import from @squilo/msal-auth-strategy.
+      SQL auth (UserAndPassword) is in the core squilo package.
+
+  - skill: output-results
+    note: >
+      Built-in strategies (Merge, Json, Console) are in squilo.
+      Excel output requires @squilo/xls-output-strategy.
+
+  - skill: integrate-honojs
+    note: >
+      Hono is an external dependency. The skill focuses on wiring
+      Squilo's streaming output to Hono's Response helpers.
+
+# High-priority failure modes that affect multiple skills.
+global-failure-modes:
+  - id: safe-guard-confusion
+    description: Developers misunderstand SAFE_GUARD as an error limit that stops everything.
+    affected_skills: [handle-errors, execute-updates, retrieve-data]
+    detail: >
+      SAFE_GUARD (default=1; 0 or invalid disables) limits how many database
+      errors occur before halting. The first min(SAFE_GUARD, concurrent)
+      databases run one at a time; after SAFE_GUARD errors, databases not yet
+      started are skipped (no result emitted) and in-flight ones finish. With
+      retry, only the final failure counts. Per-database errors are returned
+      as data (Execute array or Output tuple), not thrown; only a failing
+      discovery query rejects Execute()/Output().
+
+  - id: monorepo-import-mismatch
+    description: Agents import from wrong package or use outdated subpath imports.
+    affected_skills: [setup-authentication, output-results]
+    detail: >
+      The core squilo package has NO subpath exports. All core exports
+      must use import { ... } from "squilo". Extension packages use
+      their own package names (@squilo/msal-auth-strategy, @squilo/xls-output-strategy).
