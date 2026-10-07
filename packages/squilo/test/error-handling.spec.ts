@@ -7,6 +7,7 @@ import { DATABASES, SetupDatabases } from "./container/setup/databases";
 import { SetupUsers } from "./container/setup/users";
 import { LoadEnv } from "../src/utils/load-env";
 import { MergeOutputStrategy } from "../src/pipes/output/strategies";
+import type { ConnectionPoolWrapper } from "../src/pool";
 
 describe("Error handling and logging tests", async () => {
   const container = await AzureSqlEdge();
@@ -85,6 +86,62 @@ describe("Error handling and logging tests", async () => {
         });
 
       expect(errors.length).toBe(2);
+    });
+  });
+
+  describe("Timeout and abort in execute operations", () => {
+    const marker = "interrupted@test.com";
+
+    const countMarker = async (database: string) => {
+      const [, rows] = await localServer
+        .Connect(database)
+        .Retrieve(async (conn) => {
+          const result = await conn.query<{ n: number }>`SELECT COUNT(*) AS n FROM Users WHERE Email = ${marker}`;
+          return result.recordset;
+        })
+        .Output(MergeOutputStrategy());
+      return rows[0]!.n;
+    };
+
+    const slowTransaction = async (conn: ConnectionPoolWrapper) => {
+      await using tx = await conn.transaction$();
+      await tx.request().query`
+        INSERT INTO Users (Name, Email) VALUES ('Interrupted', ${marker});
+        WAITFOR DELAY '00:00:10';
+      `;
+      await tx.commit$();
+    };
+
+    test("Should abort the running query on timeout and roll back its transaction", async () => {
+      process.env.SAFE_GUARD = "0";
+      const database = DATABASES[0]!;
+      const started = Date.now();
+
+      const errors = await localServer
+        .Connect([database], { timeout: "1 second" })
+        .Execute(slowTransaction);
+
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.error.name).toBe("TimeoutError");
+      expect(await countMarker(database)).toBe(0);
+    });
+
+    test("Should abort the running query on signal and roll back its transaction", async () => {
+      process.env.SAFE_GUARD = "0";
+      const database = DATABASES[1]!;
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 1000);
+      const started = Date.now();
+
+      const errors = await localServer
+        .Connect([database], { signal: controller.signal })
+        .Execute(slowTransaction);
+
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.error.name).toBe("AbortError");
+      expect(await countMarker(database)).toBe(0);
     });
   });
 });

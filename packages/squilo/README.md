@@ -221,6 +221,39 @@ const [errors, data] = await LocalServer
     .Output(MergeOutputStrategy());
 ```
 
+### Execution Options: Retry, Timeout and Cancellation
+
+The second argument of `.Connect()` takes either a concurrency number or an options object:
+
+```ts
+import { IsTransientError } from "squilo";
+
+const controller = new AbortController();
+process.on("SIGINT", () => controller.abort()); // Ctrl+C stops the run cleanly
+
+const errors = await LocalServer
+    .Connect(databases, {
+        concurrent: 5,              // sliding window: the next database starts as soon as one finishes
+        retry: 3,                   // or { times, delay, while }
+        timeout: "2 minutes",       // per database, retries included
+        signal: controller.signal,
+    })
+    .Execute(async (conn) => {
+        await using tx = await conn.transaction$();
+        await tx.request().query`UPDATE Users SET Active = 1`;
+        await tx.commit$();
+    });
+```
+
+- **`retry`** re-runs the callback on a fresh connection. By default only transient errors are retried
+  (`IsTransientError`: deadlock, lock timeout, Azure SQL throttling/failover, dropped connections), with
+  exponential backoff starting at 200ms. Use `{ times, delay, while: (error) => boolean }` to customize.
+  Only enable it when the callback is safe to run again: everything inside a transaction is, writes outside one may be repeated.
+- **`timeout`** fails the database with a `TimeoutError`. Its connection is closed at the socket level, which aborts the
+  running query and makes SQL Server roll back the open transaction.
+- **`signal`**: databases that have not started are skipped; in-flight ones fail with an `AbortError` and are closed like on
+  timeout. Results obtained before aborting are kept.
+
 ## Authentication
 
 ### SQL Username/Password
@@ -723,6 +756,8 @@ src/
 // Core types
 import type { AuthStrategy } from "squilo";
 import type { OutputStrategy, ExecutionResult, ExecutionError } from "squilo";
+import type { ExecutionOptions, RetryOptions, DurationInput } from "squilo";
+import { IsTransientError } from "squilo";
 
 // mssql re-exported as SQL
 import { SQL, type ConnectionPool, type Transaction, type Request } from "squilo";

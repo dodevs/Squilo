@@ -103,8 +103,8 @@ Server(config) → .Auth(strategy) → .Connect(db|dbs|query) → .Retrieve(fn) 
 | Server | `Server(config)` | `ServerConfig` (mssql config minus auth fields) | `ServerChain` | `.Auth(strategy)` |
 | Auth | `.Auth(strategy)` | `AuthStrategy` function | `AuthenticationChain` | `.Connect(...)` |
 | Connect | `.Connect(db)` | `string` | `ConnectionChain<string>` | `.Execute` or `.Retrieve` |
-| Connect | `.Connect([dbs])` | `string[]` | `ConnectionChain<string[]>` | `.Execute` or `.Retrieve` |
-| Connect | `.Connect(options)` | `ConnectionOptions` (discovery query) | `ConnectionChain<T>` | `.Execute` or `.Retrieve` |
+| Connect | `.Connect([dbs], options?)` | `string[]`, `number | ExecutionOptions` | `ConnectionChain<string>` | `.Execute` or `.Retrieve` |
+| Connect | `.Connect(query, options?)` | `ConnectionOptions` (discovery query), `number | ExecutionOptions` | `ConnectionChain<T>` | `.Execute` or `.Retrieve` |
 | Retrieve | `.Retrieve(fn)` | `(pool, T) => Promise<TReturn>` | `RetrieveChain<T, TReturn>` | `.Transform` or `.Output` |
 | Execute | `.Execute(fn)` | `(pool, T) => Promise<void>` | `Promise<ExecutionError[]>` | *(terminal)* |
 | Transform | `.Transform(fn)` | `TransformFunction<TInput, TOutput>` | `TransformChain<T, TOutput>` | `.Output(strategy)` |
@@ -158,7 +158,8 @@ packages/squilo/src/
         ├── progress.ts             # cli-progress bar (silent when NODE_ENV=test)
         └── runner/
             ├── index.ts            # Runner — Effect Stream: per-DB acquire/release, sliding-window concurrency, SAFE_GUARD
-            └── types.ts            # RunStream, ExecutionResult, ExecutionError, ConnectionFailed/ExecutionFailed
+            ├── transient.ts        # IsTransientError — default retry predicate
+            └── types.ts            # RunStream, ExecutionResult, ExecutionError, RunnerError (ConnectionFailed/ExecutionFailed/TimedOut/Aborted)
 ```
 
 ### Key Types
@@ -194,11 +195,12 @@ export type { AuthStrategy };
 export type { ServerConfig };
 export type { OutputStrategy };
 export type { ExecutionResult, ExecutionError, ErrorType };
-export type { DatabaseObject };
+export type { DatabaseObject, ExecutionOptions, RetryOptions, DurationInput };
 
 // Built-in strategies
 export { UserAndPassword };
 export { MergeOutputStrategy, ConsoleOutputStrategy, JsonOutputStrategy };
+export { IsTransientError };                      // default retry predicate
 ```
 
 ## Key Design Patterns
@@ -216,8 +218,14 @@ Retrieve uses `ReadableStream` / `TransformStream` to stream results. `Transform
 ### 4. SAFE_GUARD (`packages/squilo/src/utils/load-env.ts`)
 Environment variable `SAFE_GUARD` limits how many database errors trigger before halting further connections. Default: `1`. Set to `0` to disable. The first `min(SAFE_GUARD, concurrent)` databases run one at a time; once the guard trips, databases that have not started are skipped (no result emitted) while in-flight executions finish.
 
-### 5. Concurrency Control
-`.Connect(databases, concurrent?)` accepts an optional concurrency parameter that controls how many databases run in parallel, as a sliding window (a new database starts as soon as any running one finishes). Default is unbounded (all at once).
+### 5. Concurrency, Retry, Timeout and Cancellation
+`.Connect(databases, options?)` takes a concurrency number or `ExecutionOptions`:
+- `concurrent`: how many databases run in parallel, as a sliding window (a new database starts as soon as any running one finishes). Default is unbounded (all at once).
+- `retry`: `number | { times, delay?, while? }`. Re-runs the callback on a fresh connection with exponential backoff; by default only `IsTransientError` errors (deadlock, throttling, dropped connection; it unwraps the `SuppressedError` from `await using`).
+- `timeout`: per-database budget (retries included). Fails with a `TimeoutError` result.
+- `signal`: `AbortSignal`. Not-started databases are skipped; in-flight ones fail with an `AbortError` result.
+
+Timeout/abort interrupt the execution and the Runner calls `ForceClose` (`pool/index.ts`): it closes busy tedious connections at the socket level, so the query dies and SQL Server rolls back the open transaction. A plain `pool.close()` would hang forever while a transaction holds a connection (tarn waits for used resources).
 
 ### 6. Dynamic Database Discovery
 `ConnectionOptions` allows specifying a management database and a SQL query that returns rows with a `Database` column. Uses `DatabaseObject` type (`{ Database: string }`) for type-safe discovery.
@@ -263,8 +271,9 @@ test/
 ├── runner.spec.ts             # Runner with an in-memory Pool (no Docker): concurrency, SAFE_GUARD, discovery failure
 ├── connection.spec.ts         # ConnectionPoolWrapper + TransactionWrapper disposal
 ├── pool.spec.ts               # TransactionWrapper with a fake Transaction (no Docker): commit failure rolls back
+├── transient.spec.ts          # IsTransientError (no Docker)
 ├── transform.spec.ts          # Transform pipe: async transform, property addition
-├── error-handling.spec.ts     # SAFE_GUARD env var behavior (retrieve + execute)
+├── error-handling.spec.ts     # SAFE_GUARD behavior + timeout/abort rolling back a real transaction
 └── container/                 # Test container helpers
 ```
 

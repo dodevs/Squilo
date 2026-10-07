@@ -32,6 +32,8 @@ const FakePool = (options: { failConnect?: string[]; discovery?: () => Promise<u
         close: async () => {
           events.push(`close:${database}`);
         },
+        // tarn pool internals used by ForceClose: one busy connection per database
+        pool: { used: [{ resource: { close: () => events.push(`kill:${database}`) } }] },
         request: () => ({
           query: async () => ({ recordset: await options.discovery!() }),
         }),
@@ -221,5 +223,170 @@ describe("Runner", () => {
     }).Execute(async () => { });
 
     await expect(execution).rejects.toThrow("Login failed for Manager");
+  });
+
+  describe("retry", () => {
+    const deadlock = () => Object.assign(new Error("Transaction was deadlocked"), { number: 1205 });
+
+    test("Should retry transient errors on a fresh connection until it succeeds", async () => {
+      const { pool, events } = FakePool();
+      let attempts = 0;
+
+      const errors = await Connect(pool)(["a"], { retry: { times: 3, delay: 1 } }).Execute(async () => {
+        attempts++;
+        if (attempts < 3) throw deadlock();
+      });
+
+      expect(errors).toEqual([]);
+      expect(attempts).toBe(3);
+      expect(events).toEqual(["close:a", "close:a", "close:a"]);
+    });
+
+    test("Should report the last error once retries are exhausted", async () => {
+      const { pool } = FakePool();
+      let attempts = 0;
+
+      const errors = await Connect(pool)(["a"], { retry: { times: 2, delay: 1 } }).Execute(async () => {
+        attempts++;
+        throw deadlock();
+      });
+
+      expect(attempts).toBe(3);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.error).toEqual(expect.objectContaining({ number: 1205 }));
+    });
+
+    test("Should not retry permanent errors", async () => {
+      const { pool } = FakePool();
+      let attempts = 0;
+
+      const errors = await Connect(pool)(["a"], { retry: 3 }).Execute(async () => {
+        attempts++;
+        throw Object.assign(new Error("Invalid object name 'Nope'."), { number: 208 });
+      });
+
+      expect(attempts).toBe(1);
+      expect(errors).toHaveLength(1);
+    });
+
+    test("Should use a custom predicate", async () => {
+      const { pool } = FakePool();
+      let attempts = 0;
+
+      await Connect(pool)(["a"], { retry: { times: 2, delay: 1, while: (e) => e.message === "flaky" } }).Execute(async () => {
+        attempts++;
+        throw new Error("flaky");
+      });
+
+      expect(attempts).toBe(3);
+    });
+
+    test("Should retry a deadlock hidden in the SuppressedError of await using", async () => {
+      const { pool } = FakePool();
+      let attempts = 0;
+
+      const errors = await Connect(pool)(["a"], { retry: { times: 1, delay: 1 } }).Execute(async () => {
+        attempts++;
+        if (attempts === 1) throw new SuppressedError(new Error("Transaction has been aborted."), deadlock());
+      });
+
+      expect(errors).toEqual([]);
+      expect(attempts).toBe(2);
+    });
+
+    test("Should count only the final failure towards SAFE_GUARD", async () => {
+      process.env.SAFE_GUARD = "1";
+      const { pool } = FakePool();
+      const attempts: Record<string, number> = {};
+
+      const errors = await Connect(pool)(["a", "b"], { retry: { times: 1, delay: 1 } }).Execute(async (_, database) => {
+        attempts[database] = (attempts[database] ?? 0) + 1;
+        if (database === "a" && attempts[database] === 1) throw deadlock();
+      });
+
+      expect(errors).toEqual([]);
+      expect(attempts).toEqual({ a: 2, b: 1 });
+    });
+  });
+
+  describe("timeout", () => {
+    test("Should fail a database that exceeds its budget and force-close its connection", async () => {
+      const { pool, events } = FakePool();
+      const started = Date.now();
+
+      const errors = await Connect(pool)(["slow", "fast"], { timeout: 50 }).Execute(async (_, database) => {
+        await sleep(database === "slow" ? 2000 : 5);
+      });
+
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.database).toBe("slow");
+      expect(errors[0]?.error).toEqual(expect.objectContaining({ name: "TimeoutError", message: "Execution timed out after 50ms" }));
+      expect(events).toContain("kill:slow");
+      expect(events).toContain("close:fast");
+      expect(events).not.toContain("kill:fast");
+    });
+
+    test("Should include retries in the budget", async () => {
+      const { pool } = FakePool();
+      let attempts = 0;
+
+      const errors = await Connect(pool)(["a"], { timeout: "100 millis", retry: { times: 100, delay: 30 } }).Execute(async () => {
+        attempts++;
+        throw Object.assign(new Error("deadlock"), { number: 1205 });
+      });
+
+      expect(errors[0]?.error).toEqual(expect.objectContaining({ name: "TimeoutError" }));
+      expect(attempts).toBeLessThan(10);
+    });
+  });
+
+  describe("signal", () => {
+    test("Should abort in-flight databases and skip the ones not started", async () => {
+      const { pool, events } = FakePool();
+      const controller = new AbortController();
+      const called: string[] = [];
+      setTimeout(() => controller.abort(), 50);
+
+      const started = Date.now();
+      const errors = await Connect(pool)(["a", "b", "c"], { concurrent: 1, signal: controller.signal }).Execute(async (_, database) => {
+        called.push(database);
+        await sleep(2000);
+      });
+
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(called).toEqual(["a"]);
+      expect(errors).toEqual([{ database: "a", error: expect.objectContaining({ name: "AbortError" }) }]);
+      expect(events).toContain("kill:a");
+    });
+
+    test("Should keep the results obtained before aborting", async () => {
+      const { pool } = FakePool();
+      const controller = new AbortController();
+
+      const results = await Connect(pool)(["a", "b", "c"], { concurrent: 1, signal: controller.signal })
+        .Retrieve(async (_, database) => {
+          if (database === "b") {
+            controller.abort();
+            await sleep(2000);
+          }
+          return database;
+        })
+        .Output(Collect());
+
+      expect(results.map((r) => [r.database, r.data ?? r.error?.name])).toEqual([["a", "a"], ["b", "AbortError"]]);
+    });
+
+    test("Should run nothing when the signal is already aborted", async () => {
+      const { pool } = FakePool();
+      let called = false;
+
+      const errors = await Connect(pool)(["a", "b"], { signal: AbortSignal.abort() }).Execute(async () => {
+        called = true;
+      });
+
+      expect(called).toBe(false);
+      expect(errors).toEqual([]);
+    });
   });
 });

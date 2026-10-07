@@ -29,4 +29,17 @@ export class ExecutionFailed {
     constructor(readonly cause: unknown) { }
 }
 
-export type RunnerError = ConnectionFailed | ExecutionFailed;
+export class TimedOut {
+    readonly _tag: "TimedOut" = "TimedOut";
+    readonly cause: Error;
+    constructor(duration: string) {
+        this.cause = Object.assign(new Error(`Execution timed out after ${duration}`), { name: "TimeoutError" });
+    }
+}
+
+export class Aborted {
+    readonly _tag: "Aborted" = "Aborted";
+    readonly cause: Error = Object.assign(new Error("Execution aborted"), { name: "AbortError" });
+}
+
+export type RunnerError = ConnectionFailed | ExecutionFailed | TimedOut | Aborted;

@@ -5,7 +5,7 @@ import { Retrieve } from "../retrieve";
 import { Runner } from "../shared/runner";
 import type { Databases } from "../shared/runner/types";
 
-import type { ConnectionOptions, ConnectionChain, DatabaseObject } from "./types";
+import type { ConnectionOptions, ConnectionChain, DatabaseObject, ExecutionOptions } from "./types";
 
 const ResolveDatabases = <T extends string | DatabaseObject>(
     pool: Pool,
@@ -35,8 +35,9 @@ const ResolveDatabases = <T extends string | DatabaseObject>(
     throw new Error("Invalid parameter");
 }
 
-export const Connect = (pool: Pool) => <T extends string | DatabaseObject>(param: string | string[] | ConnectionOptions, concurrent?: number): ConnectionChain<T> => {
-    const run = Runner<T>(pool, ResolveDatabases<T>(pool, param), concurrent);
+export const Connect = (pool: Pool) => <T extends string | DatabaseObject>(param: string | string[] | ConnectionOptions, options?: number | ExecutionOptions): ConnectionChain<T> => {
+    const executionOptions = typeof options === "number" ? { concurrent: options } : options;
+    const run = Runner<T>(pool, ResolveDatabases<T>(pool, param), executionOptions);
 
     return {
         Execute: Execute(run),

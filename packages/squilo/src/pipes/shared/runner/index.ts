@@ -1,10 +1,12 @@
-import { Effect, Result, Stream } from "effect";
+import { Duration, Effect, Exit, Option, Result, Schedule, Stream } from "effect";
 import type { MSSQLError, RequestError } from "mssql";
-import { ConnectionPoolWrapper, type Pool } from "../../../pool";
+import { ConnectionPoolWrapper, ForceClose, type Pool } from "../../../pool";
 import { LoadEnv } from "../../../utils/load-env";
-import type { DatabaseObject } from "../../connect/types";
+import type { DatabaseObject, DurationInput, ExecutionOptions, RetryOptions } from "../../connect/types";
 import { Progress } from "../progress";
+import { IsTransientError } from "./transient";
 import {
+    Aborted,
     ConnectionFailed,
     ExecutionFailed,
     type Databases,
@@ -13,6 +15,7 @@ import {
     type RunnerError,
     type RunnerFn,
     type RunStream,
+    TimedOut,
 } from "./types";
 
 const nameOf = (database: string | DatabaseObject): string =>
@@ -34,27 +37,56 @@ const toErrorType = (cause: unknown): ErrorType => {
     } as ErrorType;
 };
 
+const formatDuration = (input: DurationInput): string =>
+    Option.getOrElse(Option.map(Duration.fromInput(input), Duration.format), () => String(input));
+
+const withRetry = <A>(execution: Effect.Effect<A, RunnerError>, retry: number | RetryOptions): Effect.Effect<A, RunnerError> => {
+    const { times, delay = "200 millis", while: shouldRetry = IsTransientError } =
+        typeof retry === "number" ? { times: retry } : retry;
+
+    return Effect.retry(execution, {
+        times,
+        schedule: Schedule.exponential(delay),
+        while: (error: RunnerError) => shouldRetry(error.cause as ErrorType),
+    });
+};
+
+/** Fails with `Aborted` as soon as the signal aborts. */
+const abortion = (signal: AbortSignal) => Effect.callback<never, Aborted>((resume) => {
+    const onAbort = () => resume(Effect.fail(new Aborted()));
+
+    if (signal.aborted) {
+        return onAbort();
+    }
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    return Effect.sync(() => signal.removeEventListener("abort", onAbort));
+});
+
 export const Runner = <T extends string | DatabaseObject>(
     pool: Pool,
     databases$: Databases<T>,
-    concurrent?: number
+    { concurrent, retry, timeout, signal }: ExecutionOptions = {}
 ): RunStream<T> => <TReturn>(fn: RunnerFn<T, TReturn>) => Stream.unwrap(Effect.gen(function* () {
     const databases = yield* databases$;
     const safeGuard = LoadEnv().SAFE_GUARD;
     const progress = Progress();
     let errorsCount = 0;
 
-    const tripped = () => safeGuard > 0 && errorsCount >= safeGuard;
+    const tripped = () => (safeGuard > 0 && errorsCount >= safeGuard) || signal?.aborted === true;
 
     const connection = (database: T) => Effect.acquireRelease(
         Effect.tryPromise({
             try: () => pool.connect({ database: nameOf(database) })(),
             catch: (cause) => new ConnectionFailed(cause),
         }).pipe(Effect.map((conn) => new ConnectionPoolWrapper(conn))),
-        (conn) => Effect.promise(() => conn.close().catch(() => { })),
+        // An interrupted execution (timeout/abort) may still hold a transaction: `close()` would never resolve.
+        (conn, exit) => Exit.hasInterrupts(exit)
+            ? Effect.sync(() => ForceClose(conn))
+            : Effect.promise(() => conn.close().catch(() => { })),
     );
 
-    const execute = (database: T): Effect.Effect<TReturn, RunnerError> => connection(database).pipe(
+    const attempt = (database: T): Effect.Effect<TReturn, RunnerError> => connection(database).pipe(
         Effect.flatMap((conn) => Effect.tryPromise({
             try: () => fn(conn, database),
             catch: (cause) => new ExecutionFailed(cause),
@@ -62,8 +94,29 @@ export const Runner = <T extends string | DatabaseObject>(
         Effect.scoped,
     );
 
-    // Once SAFE_GUARD errors are reached, pending databases are skipped (nothing is emitted for them).
-    // In-flight executions are not interrupted.
+    const execute = (database: T): Effect.Effect<TReturn, RunnerError> => {
+        let execution = attempt(database);
+
+        if (retry !== undefined) {
+            execution = withRetry(execution, retry);
+        }
+
+        if (timeout !== undefined) {
+            execution = execution.pipe(Effect.timeoutOrElse({
+                duration: timeout,
+                orElse: () => Effect.fail(new TimedOut(formatDuration(timeout))),
+            }));
+        }
+
+        if (signal !== undefined) {
+            execution = execution.pipe(Effect.raceFirst(abortion(signal)));
+        }
+
+        return execution;
+    };
+
+    // Once SAFE_GUARD errors are reached, or the signal aborts, pending databases are skipped (nothing is
+    // emitted for them). SAFE_GUARD does not interrupt in-flight executions; aborting does.
     const run = (database: T): Effect.Effect<ExecutionResult<T, TReturn> | undefined> => Effect.suspend(() => {
         const name = nameOf(database);
 

@@ -1,7 +1,7 @@
-import type { ConnectionChain, ConnectionOptions, DatabaseObject } from "../connect/types";
+import type { ConnectionChain, ConnectionOptions, DatabaseObject, ExecutionOptions } from "../connect/types";
 
 export type AuthenticationChain = {
-    Connect(database: string): ConnectionChain<string>;
-    Connect(databases: string[], concurrent?: number): ConnectionChain<string>;
-    Connect<T extends DatabaseObject>(options: ConnectionOptions, concurrent?: number): ConnectionChain<T>;
+    Connect(database: string, options?: ExecutionOptions): ConnectionChain<string>;
+    Connect(databases: string[], options?: number | ExecutionOptions): ConnectionChain<string>;
+    Connect<T extends DatabaseObject>(query: ConnectionOptions, options?: number | ExecutionOptions): ConnectionChain<T>;
 }

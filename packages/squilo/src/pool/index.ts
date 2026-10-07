@@ -65,9 +65,10 @@ export function Pool(poolConfig: config): Pool {
                     return await close();
                 }
 
-                pool.on('error', err => {
+                // Throwing here would be an uncaught exception: this fires outside any caller's
+                // promise (e.g. when ForceClose drops the socket of a busy connection).
+                pool.on('error', () => {
                     delete POOL[database];
-                    throw err;
                 });
 
                 POOL[database] = () => pool
@@ -82,4 +83,19 @@ export function Pool(poolConfig: config): Pool {
             return POOL[database]!;
         },
     }
+}
+
+type TarnPool = { used: { resource: { close(): void } }[] };
+
+/**
+ * Closes every busy connection at the socket level. Their running requests fail right away and SQL Server
+ * rolls back any open transaction. `close()` alone would wait forever for a connection held by a transaction.
+ */
+export function ForceClose(conn: ConnectionPool): void {
+    const tarn = (conn as unknown as { pool?: TarnPool }).pool;
+    for (const used of tarn?.used ?? []) {
+        used.resource.close();
+    }
+    // Not awaited: it only resolves once the caller's code lets go of its transaction.
+    conn.close().catch(() => { });
 }

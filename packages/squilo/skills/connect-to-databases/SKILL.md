@@ -4,13 +4,16 @@ description: >
   Connect to single database, array of databases with concurrency limit, or
   dynamically discover databases via query with Database column. Returns
   ConnectionChain with Execute() and Retrieve(). DatabaseObject carries extra
-  properties from discovery query.
+  properties from discovery query. ExecutionOptions add retry (transient errors),
+  per-database timeout and AbortSignal cancellation.
 type: core
 library: squilo
 library_version: "0.7.0-beta.1"
 sources:
   - "dodevs/Squilo:packages/squilo/src/pipes/connect/index.ts"
   - "dodevs/Squilo:packages/squilo/src/pipes/connect/types.ts"
+  - "dodevs/Squilo:packages/squilo/src/pipes/shared/runner/index.ts"
+  - "dodevs/Squilo:packages/squilo/src/pipes/shared/runner/transient.ts"
 ---
 
 # Squilo — Connect to Databases
@@ -53,6 +56,33 @@ const [errors, allUsers] = await Server({
 ```
 
 `2` = max 2 concurrent connections. Remaining databases wait in a sliding window: each one starts as soon as any running database finishes.
+
+### Retry, timeout and cancellation
+
+```ts
+import { Server, UserAndPassword, IsTransientError } from "squilo";
+
+const controller = new AbortController();
+process.on("SIGINT", () => controller.abort());
+
+const errors = await Server({ ... }).Auth(UserAndPassword("sa", "password"))
+	.Connect(["TenantDB1", "TenantDB2", "TenantDB3"], {
+		concurrent: 2,
+		retry: { times: 3, delay: "500 millis", while: IsTransientError }, // or just `retry: 3`
+		timeout: "2 minutes",
+		signal: controller.signal,
+	})
+	.Execute(async (conn) => {
+		await using tx = await conn.transaction$();
+		await tx.request().query`UPDATE Users SET Active = 1`;
+		await tx.commit$();
+	});
+```
+
+- `retry` re-runs the whole callback on a fresh connection (exponential backoff). Default predicate `IsTransientError`: deadlock (1205), lock timeout, Azure SQL throttling/failover, dropped connections. Only SAFE_GUARD-counted once retries are exhausted.
+- `timeout` is per database, retries included. The database fails with `error.name === "TimeoutError"`.
+- `signal`: databases not started are skipped (no result); in-flight ones fail with `error.name === "AbortError"`.
+- On timeout/abort the connection is closed at the socket level: the query stops and SQL Server rolls back the open transaction.
 
 ### Dynamic database discovery via query
 
