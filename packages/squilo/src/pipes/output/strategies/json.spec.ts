@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { basename, dirname, join } from "node:path";
 import { JsonOutputStrategy } from "./index";
 import type { ErrorType, ExecutionResult } from "../../shared/runner/types";
 
@@ -123,5 +124,27 @@ describe("JsonOutputStrategy", () => {
     ]);
 
     await Bun.$`rm ${result}`;
+  });
+
+  test("should reject when the result stream fails", async () => {
+    const started = Date.now();
+    const failure = new Error("Login failed for Manager");
+    const failing = new ReadableStream<ExecutionResult<string, unknown>>({
+      start(controller) {
+        controller.enqueue({ database: "database1", data: [{ id: 1 }] });
+        controller.error(failure);
+      }
+    });
+
+    await expect(JsonOutputStrategy()(failing)).rejects.toBe(failure);
+
+    // Clean up the partially written file (<script>-<timestamp>.json)
+    const script = (process.argv[1] ?? "").replace(/\.(?:js|ts)/, "");
+    const name = basename(script);
+    for await (const file of new Bun.Glob(`${name}-*.json`).scan(dirname(script))) {
+      if (Number(file.slice(name.length + 1, -".json".length)) >= started) {
+        await Bun.file(join(dirname(script), file)).delete();
+      }
+    }
   });
 });

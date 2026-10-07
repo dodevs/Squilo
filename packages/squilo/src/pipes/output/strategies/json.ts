@@ -56,6 +56,7 @@ export function JsonOutputStrategy<T, TData>(includeEmpty = true, includeErrors 
       writer.end();
     } catch (error) {
       console.error('Error writing JSON file:', error);
+      throw error;
     }
 
     if (!includeErrors) {
