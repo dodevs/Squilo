@@ -48,4 +48,30 @@ describe('Squilo test', () => {
 
     expect(users.every((user) => user.Email.endsWith(" ") === false)).toBe(true);
   })
+
+  test('Should commit or roll back a transaction inside Execute', async () => {
+    const insert = (email: string, commit: boolean) => sql.server
+      .Connect(DATABASES)
+      .Execute(async (conn) => {
+        await using tx = await conn.transaction$();
+        await tx.request().query`INSERT INTO Users (Name, Email) VALUES ('Transaction', ${email})`;
+        if (commit) await tx.commit$();
+      });
+
+    expect(await insert("committed@test.com", true)).toEqual([]);
+    expect(await insert("rolled-back@test.com", false)).toEqual([]);
+
+    const [, emails] = await sql.server
+      .Connect(DATABASES)
+      .Retrieve(async (conn) => {
+        const result = await conn.query<{ Email: string }>`
+            SELECT Email FROM Users WHERE Name = 'Transaction'
+          `;
+
+        return result.recordset.map((user) => user.Email);
+      })
+      .Output(MergeOutputStrategy());
+
+    expect(emails).toEqual(DATABASES.map(() => "committed@test.com"));
+  })
 });

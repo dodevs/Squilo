@@ -7,7 +7,7 @@ import type { AuthenticationChain } from "../../src/pipes/auth/types";
 
 export const SQL_PASSWORD = "YourStrong@Passw0rd";
 
-/** Hook budget for starting SQL Server and seeding it. bunfig's `timeout` only applies to tests, not hooks. */
+// bunfig's `timeout` only applies to tests; hooks need their own.
 export const SQL_SERVER_TIMEOUT = 180_000;
 
 export const CONFIG = (container: StartedTestContainer): config => ({
@@ -20,8 +20,8 @@ export const CONFIG = (container: StartedTestContainer): config => ({
     }
 })
 
-// "Recovery is complete" is logged before SQL Server accepts logins ("Login failed for user 'sa'").
-const WaitForLogin = async (container: StartedTestContainer): Promise<void> => {
+// "Recovery is complete" is logged before SQL Server accepts logins.
+const waitForLogin = async (container: StartedTestContainer): Promise<void> => {
     const deadline = Date.now() + 60_000;
 
     for (;;) {
@@ -48,20 +48,15 @@ export const AzureSqlEdge = async (): Promise<StartedTestContainer> => {
         .withWaitStrategy(Wait.forLogMessage('Recovery is complete'))
         .start();
 
-    await WaitForLogin(container);
+    await waitForLogin(container);
     return container;
 }
 
 export type SqlServer = {
     readonly container: StartedTestContainer;
-    /** `Server(...).Auth(UserAndPassword("sa", ...))` for this container, created once. */
     readonly server: AuthenticationChain;
 }
 
-/**
- * Starts a SQL Server for the enclosing `describe` block, runs `setup` against it, and stops it after the
- * block. Stopping matters: containers left running pile up across spec files and slow later ones down.
- */
 export const UseSqlServer = (setup?: (container: StartedTestContainer) => Promise<void>): SqlServer => {
     let container: StartedTestContainer | undefined;
     let server: AuthenticationChain | undefined;

@@ -7,7 +7,7 @@ import type { Databases } from "../shared/runner/types";
 
 import type { ConnectionOptions, ConnectionChain, DatabaseObject, ExecutionOptions } from "./types";
 
-const ResolveDatabases = <T extends string | DatabaseObject>(
+const resolveDatabases = <T extends string | DatabaseObject>(
     pool: Pool,
     param: string | string[] | ConnectionOptions
 ): Databases<T> => {
@@ -20,7 +20,6 @@ const ResolveDatabases = <T extends string | DatabaseObject>(
     }
 
     if (typeof param === "object" && "query" in param) {
-        // The management database's pool is only needed for discovery: close it even if the query fails.
         return Effect.acquireUseRelease(
             Effect.tryPromise({
                 try: () => pool.connect({ database: param.database })(),
@@ -39,7 +38,7 @@ const ResolveDatabases = <T extends string | DatabaseObject>(
 
 export const Connect = (pool: Pool) => <T extends string | DatabaseObject>(param: string | string[] | ConnectionOptions, options?: number | ExecutionOptions): ConnectionChain<T> => {
     const executionOptions = typeof options === "number" ? { concurrent: options } : options;
-    const run = Runner<T>(pool, ResolveDatabases<T>(pool, param), executionOptions);
+    const run = Runner<T>(pool, resolveDatabases<T>(pool, param), executionOptions);
 
     return {
         Execute: Execute(run),

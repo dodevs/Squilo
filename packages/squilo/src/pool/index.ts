@@ -7,8 +7,6 @@ export interface TransactionWrapper extends Transaction, AsyncDisposable {
 const isAborted = (transaction: Transaction): boolean =>
     (transaction as unknown as { _aborted?: boolean })._aborted === true;
 
-// The wrappers extend the mssql object itself instead of copying it: mssql keeps updating the original
-// (e.g. `_aborted` when SQL Server rolls back a deadlock victim), so a copy would go stale.
 // biome-ignore lint/complexity/useArrowFunction: arrow functions cannot be called with `new`
 export const TransactionWrapper = function(transaction: Transaction) {
     let committed: boolean = false;
@@ -19,8 +17,8 @@ export const TransactionWrapper = function(transaction: Transaction) {
             committed = true;
         },
         async [Symbol.asyncDispose]() {
-            // SQL Server already rolled it back (deadlock victim, XACT_ABORT): rolling back again would
-            // fail and hide the original error behind a SuppressedError.
+            // Extended in place, not copied: mssql flags `_aborted` on this object when SQL Server rolls back
+            // a deadlock victim, and rolling back again would hide the deadlock behind a SuppressedError.
             if (!committed && !isAborted(transaction)) {
                 await transaction.rollback();
             }
@@ -70,8 +68,7 @@ export function Pool(poolConfig: config): Pool {
                     return await close();
                 }
 
-                // Throwing here would be an uncaught exception: this fires outside any caller's
-                // promise (e.g. when ForceClose drops the socket of a busy connection).
+                // Must not throw: it fires outside any promise (e.g. when ForceClose drops a socket).
                 pool.on('error', () => {
                     delete POOL[database];
                 });
@@ -92,21 +89,16 @@ export function Pool(poolConfig: config): Pool {
 
 type TarnPool = { used: { resource: { close(): void } }[] };
 
-// Connections checked out of the pool: held by an open transaction or a running request.
 const busyConnections = (conn: ConnectionPool) => (conn as unknown as { pool?: TarnPool }).pool?.used ?? [];
 
 export function HasBusyConnections(conn: ConnectionPool): boolean {
     return busyConnections(conn).length > 0;
 }
 
-/**
- * Closes every busy connection at the socket level. Their running requests fail right away and SQL Server
- * rolls back any open transaction. `close()` alone would wait forever for a connection held by a transaction.
- */
+// close() waits forever for a connection held by a transaction; closing the socket makes SQL Server roll it back.
 export function ForceClose(conn: ConnectionPool): void {
     for (const used of busyConnections(conn)) {
         used.resource.close();
     }
-    // Not awaited: it only resolves once the caller's code lets go of its transaction.
     conn.close().catch(() => { });
 }

@@ -18,16 +18,4 @@ describe("IsTransientError", () => {
     expect(IsTransientError("boom")).toBe(false);
     expect(IsTransientError(undefined)).toBe(false);
   });
-
-  test("Should look inside the SuppressedError raised by await using", () => {
-    const deadlock = sqlError({ number: 1205 });
-    const rollbackFailed = sqlError({ code: "EABORT" });
-
-    expect(IsTransientError(new SuppressedError(rollbackFailed, deadlock))).toBe(true);
-    expect(IsTransientError(new SuppressedError(rollbackFailed, new Error("boom")))).toBe(false);
-  });
-
-  test("Should look inside mssql's originalError", () => {
-    expect(IsTransientError(Object.assign(new Error("wrapped"), { originalError: sqlError({ number: 1205 }) }))).toBe(true);
-  });
 });

@@ -159,7 +159,7 @@ packages/squilo/src/
         └── runner/
             ├── index.ts            # Runner — Effect Stream: per-DB acquire/release, sliding-window concurrency, SAFE_GUARD
             ├── transient.ts        # IsTransientError — default retry predicate
-            └── types.ts            # RunStream, ExecutionResult, ExecutionError, RunnerError (ConnectionFailed/ExecutionFailed/TimedOut/Aborted)
+            └── types.ts            # RunStream, ExecutionResult, ExecutionError, ErrorType
 ```
 
 ### Key Types
@@ -222,7 +222,7 @@ Environment variable `SAFE_GUARD` limits how many database errors trigger before
 ### 5. Concurrency, Retry, Timeout and Cancellation
 `.Connect(databases, options?)` takes a concurrency number or `ExecutionOptions`:
 - `concurrent`: how many databases run in parallel, as a sliding window (a new database starts as soon as any running one finishes). Default is unbounded (all at once).
-- `retry`: `number | { times, delay?, while? }`. Re-runs the callback on a fresh connection with exponential backoff; by default only `IsTransientError` errors (deadlock, throttling, dropped connection; it unwraps the `SuppressedError` from `await using`).
+- `retry`: `number | { times, delay?, while? }`. Re-runs the callback on a fresh connection with exponential backoff; by default only `IsTransientError` errors (deadlock, lock timeout, throttling, dropped connection).
 - `timeout`: per-database budget (retries included). Fails with a `TimeoutError` result.
 - `signal`: `AbortSignal`. Not-started databases are skipped; in-flight ones fail with an `AbortError` result.
 

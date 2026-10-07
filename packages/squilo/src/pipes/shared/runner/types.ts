@@ -11,46 +11,6 @@ export type ExecutionResult<T, TReturn> = Execution<T> & Partial<ExecutionData<T
 
 export type RunnerFn<T, TReturn> = (connection: ConnectionPoolWrapper, database: T) => Promise<TReturn>;
 
-/**
- * Runs `fn` against every database and emits one result per database, in completion order.
- * Only database discovery can fail the stream; per-database failures are emitted as `error` results.
- */
 export type RunStream<T> = <TReturn>(fn: RunnerFn<T, TReturn>) => Stream.Stream<ExecutionResult<T, TReturn>, unknown>;
 
 export type Databases<T> = Effect.Effect<T[], unknown>;
-
-export class ConnectionFailed {
-    readonly _tag: "ConnectionFailed" = "ConnectionFailed";
-    constructor(readonly cause: unknown) { }
-}
-
-export class ExecutionFailed {
-    readonly _tag: "ExecutionFailed" = "ExecutionFailed";
-    constructor(readonly cause: unknown) { }
-}
-
-export class TimedOut {
-    readonly _tag: "TimedOut" = "TimedOut";
-    readonly cause: Error;
-    constructor(duration: string) {
-        this.cause = Object.assign(new Error(`Execution timed out after ${duration}`), { name: "TimeoutError" });
-    }
-}
-
-export class Aborted {
-    readonly _tag: "Aborted" = "Aborted";
-    readonly cause: Error = Object.assign(new Error("Execution aborted"), { name: "AbortError" });
-}
-
-export class UnfinishedWork {
-    readonly _tag: "UnfinishedWork" = "UnfinishedWork";
-    readonly cause: Error = Object.assign(
-        new Error(
-            "The callback returned while a connection was still in use (an open transaction or an un-awaited query). " +
-            "The connection was closed and SQL Server rolled back any open transaction."
-        ),
-        { name: "UnfinishedWorkError" },
-    );
-}
-
-export type RunnerError = ConnectionFailed | ExecutionFailed | TimedOut | Aborted | UnfinishedWork;

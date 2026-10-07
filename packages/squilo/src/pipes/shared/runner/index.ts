@@ -1,26 +1,16 @@
-import { Duration, Effect, Option, Result, Schedule, Stream } from "effect";
+import { Effect, Result, Schedule, Stream } from "effect";
 import type { MSSQLError, RequestError } from "mssql";
 import { ConnectionPoolWrapper, ForceClose, HasBusyConnections, type Pool } from "../../../pool";
 import { LoadEnv } from "../../../utils/load-env";
-import type { DatabaseObject, DurationInput, ExecutionOptions, RetryOptions } from "../../connect/types";
+import type { DatabaseObject, ExecutionOptions, RetryOptions } from "../../connect/types";
 import { Progress } from "../progress";
 import { IsTransientError } from "./transient";
-import {
-    Aborted,
-    ConnectionFailed,
-    ExecutionFailed,
-    type Databases,
-    type ErrorType,
-    type ExecutionResult,
-    type RunnerError,
-    type RunnerFn,
-    type RunStream,
-    TimedOut,
-    UnfinishedWork,
-} from "./types";
+import type { Databases, ErrorType, ExecutionResult, RunnerFn, RunStream } from "./types";
 
 const nameOf = (database: string | DatabaseObject): string =>
     typeof database === "string" ? database : database.Database;
+
+const namedError = (name: string, message: string): Error => Object.assign(new Error(message), { name });
 
 const toErrorType = (cause: unknown): ErrorType => {
     const error = cause as MSSQLError & RequestError;
@@ -38,26 +28,19 @@ const toErrorType = (cause: unknown): ErrorType => {
     } as ErrorType;
 };
 
-const formatDuration = (input: DurationInput): string =>
-    Option.getOrElse(Option.map(Duration.fromInput(input), Duration.format), () => String(input));
-
-const withRetry = <A>(execution: Effect.Effect<A, RunnerError>, retry: number | RetryOptions): Effect.Effect<A, RunnerError> => {
+const withRetry = <A>(execution: Effect.Effect<A, unknown>, retry: number | RetryOptions): Effect.Effect<A, unknown> => {
     const { times, delay = "200 millis", while: shouldRetry = IsTransientError } =
         typeof retry === "number" ? { times: retry } : retry;
 
     return Effect.retry(execution, {
         times,
         schedule: Schedule.exponential(delay),
-        while: (error: RunnerError) => shouldRetry(error.cause as ErrorType),
+        while: (error: unknown) => shouldRetry(error as ErrorType),
     });
 };
 
-// mssql defers some connection releases (e.g. after the server aborts a transaction) with setImmediate.
-const settle = Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
-
-/** Fails with `Aborted` as soon as the signal aborts. */
-const abortion = (signal: AbortSignal) => Effect.callback<never, Aborted>((resume) => {
-    const onAbort = () => resume(Effect.fail(new Aborted()));
+const abortion = (signal: AbortSignal) => Effect.callback<never, Error>((resume) => {
+    const onAbort = () => resume(Effect.fail(namedError("AbortError", "Execution aborted")));
 
     if (signal.aborted) {
         return onAbort();
@@ -82,34 +65,32 @@ export const Runner = <T extends string | DatabaseObject>(
     const connection = (database: T) => Effect.acquireRelease(
         Effect.tryPromise({
             try: () => pool.connect({ database: nameOf(database) })(),
-            catch: (cause) => new ConnectionFailed(cause),
+            catch: (cause) => cause,
         }).pipe(Effect.map((conn) => new ConnectionPoolWrapper(conn))),
-        // A connection still busy here (interrupted by timeout/abort, or a transaction left open) would make
-        // `close()` wait forever.
-        (conn) => settle.pipe(Effect.andThen(Effect.suspend(() => HasBusyConnections(conn)
+        (conn) => HasBusyConnections(conn)
             ? Effect.sync(() => ForceClose(conn))
-            : Effect.promise(() => conn.close().catch(() => { }))
-        ))),
+            : Effect.promise(() => conn.close().catch(() => { })),
     );
 
-    const attempt = (database: T): Effect.Effect<TReturn, RunnerError> => Effect.scoped(Effect.gen(function* () {
+    const attempt = (database: T): Effect.Effect<TReturn, unknown> => Effect.scoped(Effect.gen(function* () {
         const conn = yield* connection(database);
         const result = yield* Effect.tryPromise({
             try: () => fn(conn, database),
-            catch: (cause) => new ExecutionFailed(cause),
+            catch: (cause) => cause,
         });
 
-        // The callback returned but left work behind (e.g. `const tx` instead of `await using tx`): its
-        // transaction is about to be rolled back, so this database must not be reported as a success.
-        yield* settle;
         if (HasBusyConnections(conn)) {
-            return yield* Effect.fail(new UnfinishedWork());
+            return yield* Effect.fail(namedError(
+                "UnfinishedWorkError",
+                "The callback returned while a connection was still in use (an open transaction or an un-awaited query). " +
+                "The connection was closed and SQL Server rolled back any open transaction."
+            ));
         }
 
         return result;
     }));
 
-    const execute = (database: T): Effect.Effect<TReturn, RunnerError> => {
+    const execute = (database: T): Effect.Effect<TReturn, unknown> => {
         let execution = attempt(database);
 
         if (retry !== undefined) {
@@ -119,7 +100,10 @@ export const Runner = <T extends string | DatabaseObject>(
         if (timeout !== undefined) {
             execution = execution.pipe(Effect.timeoutOrElse({
                 duration: timeout,
-                orElse: () => Effect.fail(new TimedOut(formatDuration(timeout))),
+                orElse: () => Effect.fail(namedError(
+                    "TimeoutError",
+                    `Execution timed out after ${typeof timeout === "number" ? `${timeout}ms` : timeout}`
+                )),
             }));
         }
 
@@ -130,8 +114,6 @@ export const Runner = <T extends string | DatabaseObject>(
         return execution;
     };
 
-    // Once SAFE_GUARD errors are reached, or the signal aborts, pending databases are skipped (nothing is
-    // emitted for them). SAFE_GUARD does not interrupt in-flight executions; aborting does.
     const run = (database: T): Effect.Effect<ExecutionResult<T, TReturn> | undefined> => Effect.suspend(() => {
         const name = nameOf(database);
 
@@ -151,13 +133,11 @@ export const Runner = <T extends string | DatabaseObject>(
                 }
 
                 errorsCount++;
-                return { database, data: undefined, error: toErrorType(result.failure.cause) };
+                return { database, data: undefined, error: toErrorType(result.failure) };
             }),
         );
     });
 
-    // The first SAFE_GUARD databases run one at a time, so a systematic failure halts
-    // the run before fanning out. The rest run in a sliding window of `concurrent`.
     const warmup = Math.max(0, Math.min(databases.length, concurrent ?? databases.length, safeGuard || 0));
 
     return Stream.concat(

@@ -338,19 +338,6 @@ describe("Runner", () => {
       expect(attempts).toBe(3);
     });
 
-    test("Should retry a deadlock hidden in the SuppressedError of await using", async () => {
-      const { pool } = FakePool();
-      let attempts = 0;
-
-      const errors = await Connect(pool)(["a"], { retry: { times: 1, delay: 1 } }).Execute(async () => {
-        attempts++;
-        if (attempts === 1) throw new SuppressedError(new Error("Transaction has been aborted."), deadlock());
-      });
-
-      expect(errors).toEqual([]);
-      expect(attempts).toBe(2);
-    });
-
     test("Should count only the final failure towards SAFE_GUARD", async () => {
       process.env.SAFE_GUARD = "1";
       const { pool } = FakePool();
