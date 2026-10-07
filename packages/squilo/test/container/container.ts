@@ -7,7 +7,7 @@ import type { AuthenticationChain } from "../../src/pipes/auth/types";
 
 export const SQL_PASSWORD = "YourStrong@Passw0rd";
 
-// bunfig's `timeout` only applies to tests; hooks need their own.
+// Pulling the image on the first run can exceed the default timeout (scripts/test-setup.ts).
 export const SQL_SERVER_TIMEOUT = 180_000;
 
 export const CONFIG = (container: StartedTestContainer): config => ({

@@ -1,6 +1,6 @@
 [test]
-timeout = 60000
+preload = ["./scripts/test-setup.ts"]
 coverage = true
-coverageThreshold = { line = 0.7, function = 0.9, statement = 0.9 }
+coverageThreshold = { lines = 0.7, functions = 0.9, statements = 0.9 }
 coverageDir = "./coverage"
 coverageReporter = ["text", "lcov"]
