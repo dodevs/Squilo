@@ -4,3 +4,5 @@ coverage = true
 coverageThreshold = { lines = 0.7, functions = 0.9, statements = 0.9 }
 coverageDir = "./coverage"
 coverageReporter = ["text", "lcov"]
+# Workspace packages import each other through their built dist.
+coveragePathIgnorePatterns = ["**/dist/**"]
