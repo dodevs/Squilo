@@ -8,6 +8,15 @@
  *   bun run test:docker
  *   bun run test:docker ./packages/squilo/test/connect.spec.ts
  */
+// Bun on Windows links workspace packages by absolute path, which the container sees under /mnt/<drive>.
+const windowsPath = /^([A-Za-z]):\\(.*)$/.exec(process.cwd());
+const workspaceLinks = windowsPath
+	? [
+			"--mount",
+			`type=bind,source=${process.cwd()},target=/mnt/${windowsPath[1]!.toLowerCase()}/${windowsPath[2]!.replaceAll("\\", "/")}`,
+		]
+	: [];
+
 const args = [
 	"run",
 	"--rm",
@@ -20,6 +29,7 @@ const args = [
 	"TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal",
 	"--mount",
 	`type=bind,source=${process.cwd()},target=/app`,
+	...workspaceLinks,
 	"-w",
 	"/app",
 	`oven/bun:${Bun.version}`,
@@ -28,5 +38,7 @@ const args = [
 	...process.argv.slice(2),
 ];
 
-const docker = Bun.spawn(["docker", ...args], { stdio: ["inherit", "inherit", "inherit"] });
+const docker = Bun.spawn(["docker", ...args], {
+	stdio: ["inherit", "inherit", "inherit"],
+});
 process.exit(await docker.exited);
