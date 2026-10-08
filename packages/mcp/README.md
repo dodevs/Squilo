@@ -130,9 +130,10 @@ Then ask Claude to set Squilo up.
 ### Claude Code
 
 ```bash
-bun run build
-claude mcp add --scope user squilo -- node /path/to/Squilo/packages/mcp/dist/bin.js
+claude mcp add --scope user squilo -- npx -y @squilo/mcp
 ```
+
+The package is one bundled file (`dist/bin.js`) without dependencies, so `npx` starts it within the time MCP clients wait for a server.
 
 ## Limits
 

@@ -1,9 +1,7 @@
 /**
- * Builds the Claude Desktop extension: dist/squilo.mcpb.
- *
- * The server and every dependency are bundled into one file, so the extension carries no node_modules.
+ * Builds the Claude Desktop extension: dist/squilo.mcpb, around the bundled dist/bin.js (bun run build).
  */
-import { mkdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import manifest from "../mcpb/manifest.json" with { type: "json" };
 import pkg from "../package.json" with { type: "json" };
@@ -12,18 +10,8 @@ const root = join(import.meta.dir, "..");
 const staging = join(root, "dist", "mcpb");
 
 await rm(staging, { recursive: true, force: true });
-await mkdir(staging, { recursive: true });
-
-const build = await Bun.build({
-	entrypoints: [join(root, "src", "bin.ts")],
-	outdir: join(staging, "server"),
-	naming: "index.js",
-	target: "node",
-	format: "esm",
-});
-if (!build.success) {
-	throw new AggregateError(build.logs, "Bundling the server failed");
-}
+await mkdir(join(staging, "server"), { recursive: true });
+await copyFile(join(root, "dist", "bin.js"), join(staging, "server", "index.js"));
 
 await Bun.write(
 	join(staging, "manifest.json"),

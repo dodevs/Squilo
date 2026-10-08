@@ -18,7 +18,7 @@
 		"test:watch": "bun test --watch",
 		"test:debug": "bun test --inspect",
 		"test:docker": "bun scripts/test-docker.ts",
-		"build": "bunup",
+		"build": "bunup && bun run --cwd packages/mcp build",
 		"format": "biome format --write ."
 	},
 	"devDependencies": {

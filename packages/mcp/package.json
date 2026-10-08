@@ -12,21 +12,12 @@
 	],
 	"type": "module",
 	"files": [
-		"dist"
+		"dist",
+		"!dist/mcpb",
+		"!dist/*.mcpb"
 	],
 	"bin": {
 		"squilo-mcp": "./dist/bin.js"
-	},
-	"module": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		},
-		"./package.json": "./package.json"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -40,20 +31,17 @@
 		"email": "douglass.sousa@outlook.com.br"
 	},
 	"scripts": {
-		"build": "bunup",
+		"build": "bun scripts/build.ts",
 		"test": "bun test",
-		"pack:mcpb": "bun scripts/pack-mcpb.ts"
+		"pack:mcpb": "bun run build && bun scripts/pack-mcpb.ts"
 	},
-	"dependencies": {
+	"devDependencies": {
 		"@modelcontextprotocol/sdk": "^1.32.1",
 		"@squilo/msal-auth-strategy": "workspace:^0.7.0-beta.3",
 		"@squilo/xls-output-strategy": "workspace:^0.7.0-beta.3",
 		"squilo": "workspace:^0.7.0-beta.3",
 		"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
 		"zod": "^4.6.5"
-	},
-	"peerDependencies": {
-		"typescript": "^5.9.3"
 	},
 	"license": "MIT",
 	"engines": {
