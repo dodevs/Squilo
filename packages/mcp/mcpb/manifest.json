@@ -1,0 +1,48 @@
+{
+	"manifest_version": "0.3",
+	"name": "squilo",
+	"display_name": "Squilo",
+	"version": "0.0.0",
+	"description": "Query SQL Server databases with code, read only.",
+	"long_description": "Runs JavaScript scripts of Squilo pipelines against the SQL Server databases of the targets listed in your Squilo config file, in parallel, inside transactions that are always rolled back. Scripts combine results across databases, targets and the files in ~/.squilo/inputs, and can write JSON or Excel reports to ~/.squilo/results.",
+	"author": {
+		"name": "Douglas da Silva Sousa",
+		"email": "douglass.sousa@outlook.com.br"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/dodevs/Squilo.git"
+	},
+	"license": "MIT",
+	"keywords": ["sql-server", "mssql", "database"],
+	"server": {
+		"type": "node",
+		"entry_point": "server/index.js",
+		"mcp_config": {
+			"command": "node",
+			"args": ["${__dirname}/server/index.js"]
+		}
+	},
+	"tools": [
+		{
+			"name": "targets",
+			"description": "Lists the targets that run can read"
+		},
+		{ "name": "databases", "description": "Lists the databases of a target" },
+		{
+			"name": "run",
+			"description": "Runs a read-only JavaScript script of Squilo pipelines"
+		},
+		{ "name": "config", "description": "Shows the config, passwords masked" },
+		{
+			"name": "save_config",
+			"description": "Replaces the config with servers and targets set up with the user"
+		}
+	],
+	"compatibility": {
+		"platforms": ["win32", "darwin", "linux"],
+		"runtimes": {
+			"node": ">=22"
+		}
+	}
+}

@@ -26,6 +26,13 @@ const config: DefineConfigItem = defineWorkspace(
 				dts: { resolve: ["xlsx"] },
 			},
 		},
+		{
+			name: "mcp",
+			root: "packages/mcp",
+			config: {
+				entry: ["src/index.ts", "src/bin.ts"],
+			},
+		},
 	],
 	{
 		format: "esm",
