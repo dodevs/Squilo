@@ -20,7 +20,7 @@
 ```
 Squilo/
 ├── package.json              # Root workspace (private, workspaces: ["packages/*"])
-├── bunup.config.ts           # Workspace build for all 3 packages
+├── bunup.config.ts           # Workspace build for all 4 packages
 ├── biome.json                # Biome config
 ├── tsconfig.json             # Root TypeScript config
 ├── bun.lock / bunfig.toml    # Bun package manager
@@ -33,10 +33,15 @@ Squilo/
 │   ├── msal-auth-strategy/   # Azure AD auth (published as "@squilo/msal-auth-strategy")
 │   │   ├── src/              # msal.ts + index.ts
 │   │   └── dist/
-│   └── xls-output-strategy/  # Excel output (published as "@squilo/xls-output-strategy")
-│       ├── src/              # xls.ts + index.ts
-│       ├── test/             # xls.spec.ts
-│       └── dist/
+│   ├── xls-output-strategy/  # Excel output (published as "@squilo/xls-output-strategy")
+│   │   ├── src/              # xls.ts + index.ts
+│   │   ├── test/             # xls.spec.ts
+│   │   └── dist/
+│   └── mcp/                  # MCP server (published as "@squilo/mcp")
+│       ├── src/              # config, classify (read/dml/ddl/forbidden), target (pipeline), inputs, server, bin
+│       ├── test/             # classify/config/inputs specs (no Docker), server/writes specs (container)
+│       ├── mcpb/             # Claude Desktop extension manifest
+│       └── scripts/          # pack-mcpb.ts → dist/squilo.mcpb
 └── skills/_artifacts/        # @tanstack/intent scaffold artifacts (domain_map, skill_spec, skill_tree)
 ```
 
@@ -45,6 +50,7 @@ Squilo/
 | `packages/squilo` | `squilo` | Core pipeline — Server, Auth, Connect, Retrieve, Execute, Transform, Output |
 | `packages/msal-auth-strategy` | `@squilo/msal-auth-strategy` | Azure AD (Entra ID) interactive/silent authentication |
 | `packages/xls-output-strategy` | `@squilo/xls-output-strategy` | Excel (.xlsx) output with separate or combined sheets |
+| `packages/mcp` | `@squilo/mcp` | MCP server: agents run Squilo pipelines in JavaScript against configured targets; writes need the user to confirm a plan |
 
 ## Setup Commands
 
@@ -230,6 +236,9 @@ The same check runs when a callback returns normally: if a connection is still b
 
 ### 6. Dynamic Database Discovery
 `ConnectionOptions` allows specifying a management database and a SQL query that returns rows with a `Database` column. Uses `DatabaseObject` type (`{ Database: string }`) for type-safe discovery. The discovery connection is closed after the query. Per-database errors are returned as data, but a failing discovery query rejects `Execute()` / `Output()`.
+
+### 7. MCP Server (`packages/mcp`)
+`@squilo/mcp` reads `~/.squilo/config.json` (servers + targets) on every tool call (a missing file is an empty config) and exposes `targets`, `databases`, `run`, `config` and `save_config` over stdio. `save_config` validates with `ParseConfig`, backs up to `config.json.bak`, and puts back passwords the agent sends as `********` (`MaskPasswords`/`KeepPasswords`). `run` compiles the agent's script into an async function whose scope is `target`, `input`, `inputs` and the Merge/Json/Xls output strategies. `target(name)` (`target.ts`) mirrors the Squilo chain lazily (`Retrieve` → `Transform` → `Output`): it resolves the databases and authenticates only on `Output`, and its `Retrieve` callback gets a read-only `sql` facade instead of the connection. Each database gets a `transaction$()` that is never committed, `sql` rejects batches that `Classify` (`classify.ts`) does not sort as read, and `sql` calls are chained because a transaction takes one request at a time. `inputs.ts` reads `~/.squilo/inputs` (JSON, CSV/Excel through SheetJS). `bin.ts` redirects `console.log` to stderr (stdout is the protocol), `chdir`s to `~/.squilo` for the MSAL token cache, and points `process.argv[1]` at `~/.squilo/results` because the Json/Xls strategies name their files after it. Writes: `Classify` sorts each batch into read/dml/ddl/forbidden; a target's `allow` sets which writes `Execute` may run. `plan` runs the script with `Targets(config, { write: { kind: "plan" } })`, records the rows each write changed per database (`Execution[]`) and rolls back; `apply` asks the user through form elicitation (registered only when the client declares `elicitation.form`, in `oninitialized`), reruns the stored script and commits each database whose rows match the plan. `bun run pack:mcpb` bundles the server into one file for the Claude Desktop extension.
 
 ## Built-in Strategies
 

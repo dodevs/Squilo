@@ -15,6 +15,7 @@ Squilo is a TypeScript library (Node.js ≥22 or Bun) for orchestrating SQL Serv
 | [`squilo`](https://www.npmjs.com/package/squilo) | Core pipeline library — Server, Auth, Connect, Retrieve, Execute, Transform, Output | [packages/squilo](https://github.com/dodevs/Squilo/tree/main/packages/squilo#readme) |
 | [`@squilo/msal-auth-strategy`](https://www.npmjs.com/package/@squilo/msal-auth-strategy) | Azure AD (Entra ID) interactive/silent authentication | [packages/msal-auth-strategy](https://github.com/dodevs/Squilo/tree/main/packages/msal-auth-strategy#readme) |
 | [`@squilo/xls-output-strategy`](https://www.npmjs.com/package/@squilo/xls-output-strategy) | Excel (.xlsx) output with separate or combined sheets | [packages/xls-output-strategy](https://github.com/dodevs/Squilo/tree/main/packages/xls-output-strategy#readme) |
+| [`@squilo/mcp`](https://www.npmjs.com/package/@squilo/mcp) | MCP server: AI agents query databases with Squilo pipelines in JavaScript, and write after the user confirms | [packages/mcp](https://github.com/dodevs/Squilo/tree/main/packages/mcp#readme) |
 
 ## Quick Start
 
